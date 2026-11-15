@@ -25,9 +25,9 @@ import 'market_widgets.dart';
 import 'plugin_reload_action.dart';
 import 'native/native_plugin_section.dart';
 import 'plugin_actions.dart';
+import 'plugin_translate.dart';
 import 'plugin_load_status.dart';
 import 'plugin_widgets.dart';
-import 'seats/plugin_seam_controls.dart';
 import 'seats/plugin_web_places.dart';
 
 /// Market entry detail and the install confirmation: what it is, where it
@@ -151,7 +151,7 @@ class MarketPluginSheet extends ConsumerWidget {
               PluginHero(
                 avatar: PluginAvatar(name: plugin.name, title: title, icon: plugin.icon, size: 64),
                 title: title,
-                subtitle: [?plugin.author, ?entry.categoryTitleIn(locale)].join(' · '),
+                subtitle: [?plugin.author, ?entry.categoryTitle].join(' · '),
                 badges: [
                   ...marketEntryBadges(context, entry),
                   if (status == MarketInstallStatus.updateAvailable)
@@ -185,7 +185,11 @@ class MarketPluginSheet extends ConsumerWidget {
               ],
               if (description != null) ...[
                 const SizedBox(height: 16),
-                SelectableText(description, style: theme.textTheme.bodyMedium?.copyWith(height: 1.7)),
+                TranslatableDescription(
+                  text: description,
+                  cacheKey: '${description.hashCode}',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
+                ),
               ],
               if (listing != null) ...[const SizedBox(height: 24), MarketRiskCard(listing: listing)],
               const SizedBox(height: 20),
@@ -390,8 +394,7 @@ class BundleSheet extends ConsumerWidget {
     final summary = bundle.summary();
     final error = bundleErrorText(bundle);
     final canSwitch = bundle.readOnlyReason == null && (bundle.installed || bundle.optional) && !gone;
-    final configSource = ref.watch(pluginConfigProvider);
-    final config = configSource.value;
+    final config = ref.watch(pluginConfigProvider).value;
     final configurable = bundleSettingsRows(bundle, config);
     // Every plugin with fields gets its native page; a third-party one
     // without any keeps its config seat (an island page, or DSH Web).
@@ -441,7 +444,11 @@ class BundleSheet extends ConsumerWidget {
               ],
               if (summary != null) ...[
                 const SizedBox(height: 16),
-                SelectableText(summary, style: theme.textTheme.bodyMedium?.copyWith(height: 1.7)),
+                TranslatableDescription(
+                  text: summary,
+                  cacheKey: '${summary.hashCode}',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
+                ),
               ],
               if (error.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -507,17 +514,7 @@ class BundleSheet extends ConsumerWidget {
                 // A third-party plugin's own config page in DSH Web: its
                 // schema form, its island page, or the way to DSH Web.
                 const SizedBox(height: 16),
-                ListPageCard(
-                  margin: EdgeInsets.zero,
-                  children: [
-                    // Unknown fields are not absent fields: wait for the first
-                    // catalog before offering an alternate settings route.
-                    if (configSource.isLoading && !configSource.hasValue)
-                      ListPageRow(icon: AppIcons.configure, title: l10n.commonSettings, meta: l10n.pluginsLoading)
-                    else
-                      configSeat,
-                  ],
-                ),
+                ListPageCard(margin: EdgeInsets.zero, children: [configSeat]),
               ] else if (configurable.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 ListPageCard(
@@ -569,7 +566,6 @@ class BundleSheet extends ConsumerWidget {
                   NativePluginSection(package: package, named: package != bundle.name),
                   NativePluginPanels(package: package),
                 ],
-              if (!gone) PluginSeamControls(package: bundle.name),
               if (!gone) PluginWebPlacesSection(package: bundle.name, pluginNames: [...?bundle.meta?.title?.all]),
               if (job != null && job.isActive) ...[
                 const SizedBox(height: 16),
