@@ -58,14 +58,14 @@ jobs:
             echo "::warning::RELEASE_KEYSTORE_B64 not set (fork without secrets?) - building with debug signing"
             exit 0
           fi
-          echo "$KEYSTORE_B64" | base64 -d > app/android/release.keystore
+          echo "$KEYSTORE_B64" | base64 -d > app/android/app/release.keystore
           cat > app/android/key.properties <<KEYEOF
-          storeFile=release.keystore
+          storeFile=$PWD/app/android/app/release.keystore
           storePassword=$STORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           KEYEOF
-          test -s app/android/release.keystore
+          test -s app/android/app/release.keystore
 
       - uses: subosito/flutter-action@v2
         with:
