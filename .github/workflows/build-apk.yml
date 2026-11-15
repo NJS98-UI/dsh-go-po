@@ -13,6 +13,10 @@ on:
       - '**.md'
       - 'docs/**'
 
+permissions:
+  contents: write
+  issues: write
+
 concurrency:
   group: build-apk-${{ github.ref }}
   cancel-in-progress: true
