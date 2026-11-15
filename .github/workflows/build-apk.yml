@@ -47,6 +47,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Write release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "RELEASE_KEYSTORE_B64 secret is empty"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > app/android/release.keystore
+          cat > app/android/key.properties <<KEYEOF
+          storeFile=release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          KEYEOF
+          test -s app/android/release.keystore
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.7'
@@ -74,6 +91,11 @@ jobs:
 
       - name: Show artifacts
         run: find app/build/app/outputs -name '*.apk' -exec ls -lh {} \;
+
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/app/outputs/flutter-apk/*.apk | head -6
 
       - uses: actions/upload-artifact@v4
         with:
