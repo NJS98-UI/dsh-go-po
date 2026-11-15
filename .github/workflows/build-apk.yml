@@ -2,8 +2,20 @@ name: build-apk
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: '构建成功后自动发 GitHub release（同步上游用）'
+        type: boolean
+        default: false
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -11,6 +23,9 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Apply shell tool patch (optional)
         run: |
@@ -19,6 +34,9 @@ jobs:
           else
             echo "no patch to apply (change is already in the tree)"
           fi
+
+      - name: Check fork features intact
+        run: bash scripts/check-fork-symbols.sh
 
       - uses: actions/setup-java@v5
         with:
@@ -59,3 +77,48 @@ jobs:
           path: app/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 2
+
+      - name: Prepare release assets
+        if: github.event.inputs.release == 'true'
+        run: |
+          VERSION=$(sed -n 's/^version:[[:space:]]*\([^+]*\).*/\1/p' app/pubspec.yaml)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          sed -i 's|REPO = "ccch1mneyyy/dsh-go"|REPO = "ghjicb/dsh-Go"|' tooling/release_assets.py
+          grep -q 'REPO = "ghjicb/dsh-Go"' tooling/release_assets.py
+          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            CHANGELOG=$(git log --oneline --no-merges "$PREV..HEAD" 2>/dev/null | head -20 || git log --oneline --no-merges -20)
+          else
+            CHANGELOG=$(git log --oneline --no-merges -20)
+          fi
+          python3 - "$VERSION" "$CHANGELOG" <<'PY'
+          import pathlib, sys
+          version, changelog = sys.argv[1], sys.argv[2]
+          t = pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8')
+          t = t.replace('{{VERSION}}', version).replace('{{UPSTREAM_VERSION}}', version)
+          t = t.replace('{{CHANGELOG}}', changelog or '- 同步上游')
+          pathlib.Path('/tmp/notes.md').write_text(t, encoding='utf-8')
+          PY
+          python3 tooling/release_assets.py --notes /tmp/notes.md --delta-from 0
+          ls -lh dist/
+
+      - name: Publish GitHub release
+        if: github.event.inputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" --repo ghjicb/dsh-Go >/dev/null 2>&1; then
+            echo "release $TAG already exists, skipping"
+            exit 0
+          fi
+          gh release create "$TAG" dist/* --repo ghjicb/dsh-Go --title "DSH Go $VERSION" --notes-file /tmp/notes.md
+
+      - name: Report failure as issue
+        if: failure() && github.event.inputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo ghjicb/dsh-Go \
+            --title "自动同步构建失败：${{ github.sha }}" \
+            --body "工作流 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。检查日志后修好，再重跑 sync-upstream。" || true

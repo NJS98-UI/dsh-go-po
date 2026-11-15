@@ -1,0 +1,82 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: '0 1 * * 1' # 每周一 09:00 北京
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/ccch1mneyyy/dsh-go.git 2>/dev/null || git remote set-url upstream https://github.com/ccch1mneyyy/dsh-go.git
+          git fetch upstream main
+
+      - name: Upstream ahead?
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "behind=false" >> $GITHUB_OUTPUT
+            echo "already up to date"
+          else
+            echo "behind=true" >> $GITHUB_OUTPUT
+            echo "upstream has new commits: $(git rev-list --count HEAD..upstream/main)"
+          fi
+
+      - name: Merge upstream
+        id: merge
+        if: steps.check.outputs.behind == 'true'
+        continue-on-error: true
+        run: |
+          git config user.name "dsh-go-sync"
+          git config user.email "sync@dsh-go.local"
+          if ! git merge --no-ff --no-commit upstream/main; then
+            echo "CONFLICT=true" >> $GITHUB_OUTPUT
+            git merge --abort 2>/dev/null || true
+            exit 1
+          fi
+          # 上游改的 .github/workflows 一律丢掉，保留我们的
+          git checkout HEAD -- .github/workflows
+          git add -A
+          echo "CONFLICT=false" >> $GITHUB_OUTPUT
+
+      - name: Check fork features
+        if: steps.check.outputs.behind == 'true' && steps.merge.outcome == 'success'
+        run: bash scripts/check-fork-symbols.sh
+
+      - name: Open issue on conflict
+        if: steps.merge.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo ghjicb/dsh-Go \
+            --title "同步上游冲突：$(date -u +%F)" \
+            --body "上游 $(git rev-parse --short upstream/main) 和我们改过的文件冲突，自动合并失败。工作流 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看一下再合并。" || true
+
+      - name: Commit and push
+        if: steps.check.outputs.behind == 'true' && steps.merge.outcome == 'success'
+        run: |
+          git commit -m "sync: merge upstream $(git rev-parse --short upstream/main) [skip ci]" --no-edit
+          git push origin HEAD:main
+
+      - name: Trigger release build
+        if: steps.check.outputs.behind == 'true' && steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build-apk.yml --repo ghjicb/dsh-Go --ref main -f release=true
