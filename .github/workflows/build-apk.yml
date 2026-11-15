@@ -115,17 +115,17 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           sed -i 's|REPO = "ccch1mneyyy/dsh-go"|REPO = "ghjicb/dsh-Go"|' tooling/release_assets.py
           grep -q 'REPO = "ghjicb/dsh-Go"' tooling/release_assets.py
-          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -n "$PREV" ]; then
-            CHANGELOG=$(git log --oneline --no-merges "$PREV..HEAD" 2>/dev/null | head -20 || git log --oneline --no-merges -20)
-          else
-            CHANGELOG=$(git log --oneline --no-merges -20)
-          fi
-          python3 - "$VERSION" "$CHANGELOG" <<'PY'
+          UPSTREAM=$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/ccch1mneyyy/dsh-go/releases/latest \
+            | jq -r '.tag_name // empty' | sed 's/^[vV]//') || UPSTREAM=""
+          [ -n "$UPSTREAM" ] || UPSTREAM="未知"
+          echo "UPSTREAM=$UPSTREAM" >> $GITHUB_ENV
+          CHANGELOG=$(git log --oneline --no-merges -1)
+          python3 - "$VERSION" "$CHANGELOG" "$UPSTREAM" <<'PY'
           import pathlib, sys
-          version, changelog = sys.argv[1], sys.argv[2]
+          version, changelog, upstream = sys.argv[1], sys.argv[2], sys.argv[3]
           t = pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8')
-          t = t.replace('{{VERSION}}', version).replace('{{UPSTREAM_VERSION}}', version)
+          t = t.replace('{{VERSION}}', version).replace('{{UPSTREAM_VERSION}}', upstream)
           t = t.replace('{{CHANGELOG}}', changelog or '- 同步上游')
           pathlib.Path('/tmp/notes.md').write_text(t, encoding='utf-8')
           PY
