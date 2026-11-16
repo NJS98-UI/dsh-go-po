@@ -134,7 +134,19 @@ jobs:
       - name: Push main
         if: steps.check.outputs.behind == 'true' && steps.merge.outcome == 'success'
         run: |
-          # 合并 commit 已在 Merge upstream 步骤里创建
+          # 合并 commit 已在 Merge upstream 步骤里创建。
+          # 同步期间 main 可能被别人推过（手动修复）：先追上再推，否则 push 被拒白跑一次。
+          git fetch origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "main 在我们同步期间前进了，先合上再推"
+            git -c user.name="dsh-go-sync" -c user.email="sync@dsh-go.local" \
+              merge --no-edit origin/main || {
+                # 撞车只可能发生在我们也动过的文件上：一律用 origin/main 上最新的那份
+                git checkout --theirs -- . 2>/dev/null || true
+                git add -A
+                git commit --no-edit || true
+              }
+          fi
           git push origin HEAD:main
 
       - name: Trigger release build
