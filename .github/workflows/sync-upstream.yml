@@ -62,7 +62,6 @@ jobs:
             app/lib/ui/settings/settings_screen.dart \
             app/lib/update/update_config.dart"
 
-          OURS_VERSION=$(git show HEAD:app/pubspec.yaml | sed -n 's/^version:[[:space:]]*//p')
           TOUCHED=$(git diff --name-only upstream/main HEAD -- $OURS | tr '\n' ' ')
 
           # 冲突也不再 abort：按名单逐个决定留谁
@@ -73,9 +72,8 @@ jobs:
             git checkout HEAD -- "$f" 2>/dev/null || true
           done
 
-          # 2) pubspec 用上游的（依赖/SDK 跟上游），只把 version 行改回我们的
+          # 2) pubspec 整份用上游的（依赖、SDK、版本号都跟上游走）
           git show upstream/main:app/pubspec.yaml > app/pubspec.yaml
-          sed -i "s|^version:.*|version: $OURS_VERSION|" app/pubspec.yaml
 
           # 3) 名单外的冲突文件一律用上游
           git diff --name-only --diff-filter=U | while read -r f; do
