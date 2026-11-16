@@ -2201,7 +2201,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                     ),
                                   ),
                                 if (readOnly)
-                                  const ReadOnlyBar()
+                                  // The read-only bar stands in for the composer: the
+                                  // pet must perch on it too, or it floats over the page.
+                                  const PetPerch(kind: PerchKind.composer, child: ReadOnlyBar())
                                 else
                                   Composer(
                                     hardwareEnterSends: ref.watch(settingsProvider.select((s) => s.hardwareEnterSends)),
