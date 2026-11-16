@@ -26,17 +26,32 @@ jobs:
       - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/ccch1mneyyy/dsh-go.git 2>/dev/null || git remote set-url upstream https://github.com/ccch1mneyyy/dsh-go.git
-          git fetch upstream main
+          git fetch upstream main --tags
 
-      - name: Upstream ahead?
+      - name: Upstream released a new version?
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git merge-base --is-ancestor upstream/main HEAD; then
+          LATEST=$(gh api repos/ccch1mneyyy/dsh-go/releases/latest --jq '.tag_name // empty' 2>/dev/null || true)
+          if [ -z "$LATEST" ]; then
             echo "behind=false" >> $GITHUB_OUTPUT
-            echo "already up to date"
+            echo "上游还没有正式 release，跳过"
+            exit 0
+          fi
+          COMMIT=$(git rev-parse -q --verify "refs/tags/$LATEST^{commit}" || true)
+          if [ -z "$COMMIT" ]; then
+            COMMIT=$(git rev-parse upstream/main)
+            echo "tag $LATEST 没抓到，退回 upstream/main"
+          fi
+          if git merge-base --is-ancestor "$COMMIT" HEAD; then
+            echo "behind=false" >> $GITHUB_OUTPUT
+            echo "已经同步过上游 $LATEST，不动"
           else
             echo "behind=true" >> $GITHUB_OUTPUT
-            echo "upstream has new commits: $(git rev-list --count HEAD..upstream/main)"
+            echo "ref=$COMMIT" >> $GITHUB_OUTPUT
+            echo "tag=$LATEST" >> $GITHUB_OUTPUT
+            echo "上游发布了新版本 $LATEST，开始同步"
           fi
 
       - name: Merge upstream
@@ -62,10 +77,11 @@ jobs:
             app/lib/ui/settings/settings_screen.dart \
             app/lib/update/update_config.dart"
 
-          TOUCHED=$(git diff --name-only upstream/main HEAD -- $OURS | tr '\n' ' ')
+          BASE=$(git merge-base HEAD "${{ steps.check.outputs.ref }}")
+          TOUCHED=$(git diff --name-only "$BASE" "${{ steps.check.outputs.ref }}" -- $OURS | tr '\n' ' ')
 
           # 冲突也不再 abort：按名单逐个决定留谁
-          git merge --no-ff --no-commit upstream/main || true
+          git merge --no-ff --no-commit "${{ steps.check.outputs.ref }}" || true
 
           # 1) 我们的文件 + .github 全部用我们的
           for f in $OURS .github; do
@@ -73,7 +89,7 @@ jobs:
           done
 
           # 2) pubspec 整份用上游的（依赖、SDK、版本号都跟上游走）
-          git show upstream/main:app/pubspec.yaml > app/pubspec.yaml
+          git show "${{ steps.check.outputs.ref }}:app/pubspec.yaml" > app/pubspec.yaml
 
           # 3) 名单外的冲突文件一律用上游
           git diff --name-only --diff-filter=U | while read -r f; do
@@ -81,7 +97,7 @@ jobs:
           done
 
           git add -A
-          git commit -m "sync: merge upstream $(git rev-parse --short upstream/main) [skip ci]" \
+          git commit -m "sync: 同步上游 ${{ steps.check.outputs.tag }} [skip ci]" \
             -m "上游动过、但按规则保留我们的文件：${TOUCHED:-无}"
           echo "TOUCHED=$TOUCHED" >> $GITHUB_OUTPUT
 
