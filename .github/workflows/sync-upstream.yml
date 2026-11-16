@@ -34,24 +34,41 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LATEST=$(gh api repos/ccch1mneyyy/dsh-go/releases/latest --jq '.tag_name // empty' 2>/dev/null || true)
-          if [ -z "$LATEST" ]; then
-            echo "behind=false" >> $GITHUB_OUTPUT
-            echo "上游还没有正式 release，跳过"
-            exit 0
-          fi
-          COMMIT=$(git rev-parse -q --verify "refs/tags/$LATEST^{commit}" || true)
-          if [ -z "$COMMIT" ]; then
-            COMMIT=$(git rev-parse upstream/main)
-            echo "tag $LATEST 没抓到，退回 upstream/main"
-          fi
-          if git merge-base --is-ancestor "$COMMIT" HEAD; then
-            echo "behind=false" >> $GITHUB_OUTPUT
-            echo "已经同步过上游 $LATEST，不动"
+          FALLBACK=0
+          if [ -n "$LATEST" ]; then
+            COMMIT=$(git rev-parse -q --verify "refs/tags/$LATEST^{commit}" || true)
+            if [ -z "$COMMIT" ]; then
+              echo "release $LATEST 的 tag 没抓到，退回两天检查规则"
+              FALLBACK=1
+            elif git merge-base --is-ancestor "$COMMIT" HEAD; then
+              echo "已经同步过上游 $LATEST，不动"
+              echo "behind=false" >> $GITHUB_OUTPUT
+              exit 0
+            elif git merge-base --is-ancestor "$COMMIT" upstream/main; then
+              echo "上游发布了新版本 $LATEST，开始同步"
+              echo "behind=true" >> $GITHUB_OUTPUT
+              echo "ref=$COMMIT" >> $GITHUB_OUTPUT
+              echo "tag=$LATEST" >> $GITHUB_OUTPUT
+              exit 0
+            else
+              echo "最新 release $LATEST 的代码不在上游 main 里，本次停止同步"
+              echo "behind=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           else
-            echo "behind=true" >> $GITHUB_OUTPUT
-            echo "ref=$COMMIT" >> $GITHUB_OUTPUT
-            echo "tag=$LATEST" >> $GITHUB_OUTPUT
-            echo "上游发布了新版本 $LATEST，开始同步"
+            echo "上游还没有正式 release，退回两天检查规则"
+            FALLBACK=1
+          fi
+          if [ "$FALLBACK" = "1" ]; then
+            if ! git merge-base --is-ancestor upstream/main HEAD; then
+              echo "上游 main 有新提交（$(git rev-list --count HEAD..upstream/main) 个），同步"
+              echo "behind=true" >> $GITHUB_OUTPUT
+              echo "ref=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
+              echo "tag=main@$(git rev-parse --short upstream/main)" >> $GITHUB_OUTPUT
+            else
+              echo "上游没有更新"
+              echo "behind=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Merge upstream
