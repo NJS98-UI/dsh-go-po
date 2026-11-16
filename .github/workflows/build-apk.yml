@@ -144,6 +144,22 @@ jobs:
           fi
           gh release create "$TAG" dist/* --repo ghjicb/dsh-Go --title "DSH Go $VERSION" --notes-file /tmp/notes.md
 
+      - name: Auto merge autofix branch
+        if: success() && startsWith(github.ref, 'refs/heads/autofix/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          git config user.name "dsh-go-autofix"
+          git config user.email "autofix@dsh-go.local"
+          git checkout -B main origin/main
+          git merge --ff-only "$BRANCH"
+          # 加 [skip ci] 避免再触发一次 push 构建；下面单独触发发版构建
+          git commit --amend -m "$(git log -1 --format=%s) [skip ci]"
+          git push origin main
+          git push origin --delete "$BRANCH" || true
+          gh workflow run build-apk.yml --repo "${{ github.repository }}" --ref main -f release=true
+
       - name: Report failure as issue
         if: failure() && github.event.inputs.release == 'true'
         env:
