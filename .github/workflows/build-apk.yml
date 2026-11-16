@@ -155,7 +155,7 @@ jobs:
 
   autofix:
     needs: apk
-    if: failure() && !cancelled() && !startsWith(github.ref, 'refs/heads/autofix/')
+    if: failure() && !cancelled()
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -166,7 +166,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Work out attempt number
+        id: attempt
+        run: |
+          REF="${GITHUB_REF#refs/heads/}"
+          if [[ "$REF" == autofix/*/* ]]; then
+            ROOT=$(echo "$REF" | cut -d/ -f2)
+            N=$(echo "$REF" | cut -d/ -f3)
+            N=$((N+1))
+          else
+            ROOT="${{ github.run_id }}"
+            N=1
+          fi
+          echo "root=$ROOT" >> $GITHUB_OUTPUT
+          echo "n=$N" >> $GITHUB_OUTPUT
+          echo "第 $N 次修复尝试（根 run $ROOT）"
+
+      - name: Give up after 4 attempts
+        if: ${{ fromJSON(steps.attempt.outputs.n) > 4 }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" \
+            --title "自动修复连续 4 次仍失败：${{ github.sha }}" \
+            --body "AI 已经尝试修复 4 次，构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
+          echo "STOP=true" >> $GITHUB_ENV
+
       - name: Download failed logs
+        if: env.STOP != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -175,6 +202,7 @@ jobs:
             -o /tmp/logs.zip || true
 
       - name: Auto fix with LLM
+        if: env.STOP != 'true'
         env:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
         run: |
@@ -184,14 +212,14 @@ jobs:
           echo "AFTER=$(git diff --name-only | wc -l)" >> $GITHUB_ENV
 
       - name: Push autofix branch
-        if: env.AFTER != '0'
+        if: env.AFTER != '0' && env.STOP != 'true'
         run: |
           git config user.name "dsh-go-autofix"
           git config user.email "autofix@dsh-go.local"
-          git checkout -b "autofix/${{ github.run_id }}"
+          git checkout -b "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           git add -A
-          git commit -m "autofix: 修复构建错误（run ${{ github.run_id }}）"
-          git push origin "autofix/${{ github.run_id }}"
+          git commit -m "autofix(${{ steps.attempt.outputs.n }}/4): 修复构建错误"
+          git push origin "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           echo "PUSHED=1" >> $GITHUB_ENV
 
       - name: Dispatch build on fix branch
@@ -200,19 +228,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run build-apk.yml --repo "${{ github.repository }}" \
-            --ref "autofix/${{ github.run_id }}"
+            --ref "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
 
       - name: Report autofix
-        if: always()
+        if: env.STOP != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ env.PUSHED }}" = "1" ]; then
             gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，已自动生成修复分支：${{ github.sha }}" \
-              --body "LLM 自动修了一版，分支 \`autofix/${{ github.run_id }}\`，已触发构建验证。失败 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。构建绿了再合并，建议人工复核补丁。" || true
+              --title "构建失败，已自动生成修复分支（第 ${{ steps.attempt.outputs.n }}/4 次）：${{ github.sha }}" \
+              --body "分支 autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}，已触发构建验证。失败 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。绿了再合并。" || true
           else
             gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，自动修复没成：${{ github.sha }}" \
+              --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/4 次）：${{ github.sha }}" \
               --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
           fi
