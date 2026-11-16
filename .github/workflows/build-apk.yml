@@ -181,7 +181,7 @@ jobs:
           if [ "$N" -le 2 ]; then
             MODEL="deepseek-ai/DeepSeek-V3"
           else
-            MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
+            MODEL="deepseek-ai/DeepSeek-V4-Flash"
           fi
           echo "root=$ROOT" >> $GITHUB_OUTPUT
           echo "n=$N" >> $GITHUB_OUTPUT
@@ -195,7 +195,7 @@ jobs:
         run: |
           gh issue create --repo "${{ github.repository }}" \
             --title "自动修复连续 5 次仍失败：${{ github.sha }}" \
-            --body "AI 已经尝试修复 5 次（前 2 次 V3、后 3 次换模型），构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
+            --body "AI 已经尝试修复 5 次（前 2 次 V3、后 3 次换 V4-Flash），构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
           echo "STOP=true" >> $GITHUB_ENV
 
       - name: Download failed logs
