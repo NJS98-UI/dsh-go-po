@@ -178,18 +178,24 @@ jobs:
             ROOT="${{ github.run_id }}"
             N=1
           fi
+          if [ "$N" -le 2 ]; then
+            MODEL="deepseek-ai/DeepSeek-V3"
+          else
+            MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
+          fi
           echo "root=$ROOT" >> $GITHUB_OUTPUT
           echo "n=$N" >> $GITHUB_OUTPUT
-          echo "第 $N 次修复尝试（根 run $ROOT）"
+          echo "model=$MODEL" >> $GITHUB_OUTPUT
+          echo "第 $N 次修复尝试（根 run $ROOT，模型 $MODEL）"
 
       - name: Give up after 4 attempts
-        if: ${{ fromJSON(steps.attempt.outputs.n) > 4 }}
+        if: ${{ fromJSON(steps.attempt.outputs.n) > 5 }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue create --repo "${{ github.repository }}" \
-            --title "自动修复连续 4 次仍失败：${{ github.sha }}" \
-            --body "AI 已经尝试修复 4 次，构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
+            --title "自动修复连续 5 次仍失败：${{ github.sha }}" \
+            --body "AI 已经尝试修复 5 次（前 2 次 V3、后 3 次换模型），构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
           echo "STOP=true" >> $GITHUB_ENV
 
       - name: Download failed logs
@@ -205,6 +211,7 @@ jobs:
         if: env.STOP != 'true'
         env:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          AUTOFIX_MODEL: ${{ steps.attempt.outputs.model }}
         run: |
           python3 scripts/auto_fix.py /tmp/logs.zip || echo "AUTOFIX_SKIPPED=1" >> $GITHUB_ENV
           echo "--- changed files ---"
@@ -218,7 +225,7 @@ jobs:
           git config user.email "autofix@dsh-go.local"
           git checkout -b "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           git add -A
-          git commit -m "autofix(${{ steps.attempt.outputs.n }}/4): 修复构建错误"
+          git commit -m "autofix(${{ steps.attempt.outputs.n }}/5): 修复构建错误"
           git push origin "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           echo "PUSHED=1" >> $GITHUB_ENV
 
@@ -237,10 +244,10 @@ jobs:
         run: |
           if [ "${{ env.PUSHED }}" = "1" ]; then
             gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，已自动生成修复分支（第 ${{ steps.attempt.outputs.n }}/4 次）：${{ github.sha }}" \
+              --title "构建失败，已自动生成修复分支（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
               --body "分支 autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}，已触发构建验证。失败 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。绿了再合并。" || true
           else
             gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/4 次）：${{ github.sha }}" \
+              --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
               --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
           fi
