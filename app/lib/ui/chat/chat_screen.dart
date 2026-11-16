@@ -47,6 +47,7 @@ import '../../state/media_generation.dart';
 import '../../state/mention_state.dart';
 import '../../state/models_state.dart';
 import '../../state/new_chat_modes.dart';
+import '../../state/phone_state.dart' show phoneProvider;
 import '../../state/session_search.dart' show folderLabel;
 import '../../state/safe_mode_state.dart';
 import '../../state/session_modes.dart';
@@ -1776,6 +1777,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     final running = chat?.running ?? false;
     final pillsBesideStrip = sessionId != null && running && !typing;
     final pillsInCapsules = !readOnly && !running && !typing;
+    // 终端原版时 RootPill 不画（没有终端能力，胶囊只会碍事）。但空 Row 仍是
+    // 非 null 的 leading，胶囊行会为它留出一条看不见的空白带，宠物就悬在
+    // 那条空栖木上。没内容就不占位。
+    final shellMode = ref.watch(phoneProvider.select((s) => s.status.shell.mode));
+    final hasRootPill = shellMode == 'safe' || shellMode == 'full';
     final composerPills = _composerPills(
       sessionId,
       autoApprove: chat?.autoApprove ?? false,
@@ -2155,7 +2161,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                       // 终端胶囊与「完全权限」并排，都在输入框左侧。
                                       // 之前胶囊在 DockStack 卡片堆里、完全权限在输入框 leading 里，
                                       // 生成/静止切换时两者会上下错位。
-                                      leading: pillsInCapsules
+                                      leading: pillsInCapsules && (hasRootPill || composerPills != null)
                                           ? Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
