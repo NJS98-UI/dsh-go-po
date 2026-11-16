@@ -139,7 +139,11 @@ jobs:
         run: |
           TAG="v$VERSION"
           if gh release view "$TAG" --repo ghjicb/dsh-Go >/dev/null 2>&1; then
-            echo "release $TAG already exists, skipping"
+            # 版本名跟上游，同一版本内的修复也要能被 App 检测到：
+            # 覆盖同 tag 的资产（构建号更大），不改 tag、不跳上游版本。
+            echo "release $TAG 已存在：覆盖资产（构建号更新，App 仍能检测到）"
+            gh release upload "$TAG" dist/* --repo ghjicb/dsh-Go --clobber
+            gh release edit "$TAG" --repo ghjicb/dsh-Go --notes-file /tmp/notes.md
             exit 0
           fi
           gh release create "$TAG" dist/* --repo ghjicb/dsh-Go --title "DSH Go $VERSION" --notes-file /tmp/notes.md
