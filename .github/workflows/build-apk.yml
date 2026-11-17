@@ -18,8 +18,10 @@ permissions:
   issues: write
 
 concurrency:
-  group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # release 构建和普通 push 构建分开排队：push 构建被新 push 取消没关系，
+  # 发版构建不能被取消（取消了等于这次发版失败）。
+  group: build-apk-${{ github.ref }}-${{ github.event.inputs.release == 'true' && 'release' || 'push' }}
+  cancel-in-progress: ${{ github.event.inputs.release != 'true' }}
 
 jobs:
   apk:
@@ -30,6 +32,30 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Cache flutter pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache NDK 28.2
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/28.2.13676358
+          key: ndk-28.2.13676358-${{ runner.os }}
 
       - name: Apply shell tool patch (optional)
         run: |
@@ -82,7 +108,11 @@ jobs:
 
       - name: Install NDK 28.2 (tawcroot)
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" > /dev/null
+          if [ -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties" ]; then
+            echo "NDK 28.2 already present (cache hit)"
+          else
+            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" > /dev/null
+          fi
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
           test -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
 
@@ -208,7 +238,7 @@ jobs:
           echo "model=$MODEL" >> $GITHUB_OUTPUT
           echo "第 $N 次修复尝试（根 run $ROOT，模型 $MODEL）"
 
-      - name: Give up after 4 attempts
+      - name: Give up after 5 attempts
         if: ${{ fromJSON(steps.attempt.outputs.n) > 5 }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -258,16 +288,11 @@ jobs:
             --ref "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
 
       - name: Report autofix
-        if: env.STOP != 'true'
+        # 修成了就不开 issue（避免每轮都堆一条），只在没修成时提醒人去处理
+        if: env.STOP != 'true' && env.PUSHED != '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ env.PUSHED }}" = "1" ]; then
-            gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，已自动生成修复分支（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
-              --body "分支 autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}，已触发构建验证。失败 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。绿了再合并。" || true
-          else
-            gh issue create --repo "${{ github.repository }}" \
-              --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
-              --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
-          fi
+          gh issue create --repo "${{ github.repository }}" \
+            --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
+            --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
