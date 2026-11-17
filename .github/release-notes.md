@@ -27,3 +27,5 @@
 ## 本版变更
 
 {{CHANGELOG}}
+
+构建时间：{{BUILT_AT}}
