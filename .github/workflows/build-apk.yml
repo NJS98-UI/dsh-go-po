@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 50
           fetch-tags: true
 
       - name: Apply shell tool patch (optional)
@@ -195,7 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 50
 
       - name: Work out attempt number
         id: attempt
