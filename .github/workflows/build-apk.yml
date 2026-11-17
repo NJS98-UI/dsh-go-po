@@ -18,10 +18,8 @@ permissions:
   issues: write
 
 concurrency:
-  # release 构建和普通 push 构建分开排队：push 构建被新 push 取消没关系，
-  # 发版构建不能被取消（取消了等于这次发版失败）。
-  group: build-apk-${{ github.ref }}-${{ github.event.inputs.release == 'true' && 'release' || 'push' }}
-  cancel-in-progress: ${{ github.event.inputs.release != 'true' }}
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -32,30 +30,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Cache flutter pub
-        uses: actions/cache@v4
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
-
-      - name: Cache gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Cache NDK 28.2
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk/ndk/28.2.13676358
-          key: ndk-28.2.13676358-${{ runner.os }}
 
       - name: Apply shell tool patch (optional)
         run: |
@@ -108,11 +82,7 @@ jobs:
 
       - name: Install NDK 28.2 (tawcroot)
         run: |
-          if [ -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties" ]; then
-            echo "NDK 28.2 already present (cache hit)"
-          else
-            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" > /dev/null
-          fi
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
           test -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
 
@@ -126,10 +96,19 @@ jobs:
         run: find app/build/app/outputs -name '*.apk' -exec ls -lh {} \;
 
       - name: Verify APK signature
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1)
           [ -n "$APKSIGNER" ] || { echo "apksigner not found, skipping"; exit 0; }
-          "$APKSIGNER" verify --print-certs app/build/app/outputs/flutter-apk/*.apk | head -6
+          "$APKSIGNER" verify --print-certs app/build/app/outputs/flutter-apk/*.apk > /tmp/certs.txt
+          head -6 /tmp/certs.txt
+          # 配了私签 secret 时，指纹必须和我们 keystore 一致，否则拒绝发版
+          if [ -n "$KEYSTORE_B64" ]; then
+            grep -qi 'b1c9f6a1527907a0bbeb95b010031bd62ea883635d9b608cf9a04ef6285f7aae' /tmp/certs.txt \
+              || { echo "::error::APK 签名指纹不对（不是我们的私签），拒绝发版"; exit 1; }
+            echo "signature fingerprint OK (our release keystore)"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -151,12 +130,14 @@ jobs:
           [ -n "$UPSTREAM" ] || UPSTREAM="未知"
           echo "UPSTREAM=$UPSTREAM" >> $GITHUB_ENV
           CHANGELOG=$(git log --oneline --no-merges -1)
-          python3 - "$VERSION" "$CHANGELOG" "$UPSTREAM" <<'PY'
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%MZ)
+          python3 - "$VERSION" "$CHANGELOG" "$UPSTREAM" "$BUILT_AT" <<'PY'
           import pathlib, sys
-          version, changelog, upstream = sys.argv[1], sys.argv[2], sys.argv[3]
+          version, changelog, upstream, built_at = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
           t = pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8')
           t = t.replace('{{VERSION}}', version).replace('{{UPSTREAM_VERSION}}', upstream)
           t = t.replace('{{CHANGELOG}}', changelog or '- 同步上游')
+          t = t.replace('{{BUILT_AT}}', built_at)
           pathlib.Path('/tmp/notes.md').write_text(t, encoding='utf-8')
           PY
           python3 tooling/release_assets.py --notes /tmp/notes.md --delta-from 0
@@ -238,7 +219,7 @@ jobs:
           echo "model=$MODEL" >> $GITHUB_OUTPUT
           echo "第 $N 次修复尝试（根 run $ROOT，模型 $MODEL）"
 
-      - name: Give up after 5 attempts
+      - name: Give up after 4 attempts
         if: ${{ fromJSON(steps.attempt.outputs.n) > 5 }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -276,7 +257,7 @@ jobs:
           git checkout -b "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           git add -A
           git commit -m "autofix(${{ steps.attempt.outputs.n }}/5): 修复构建错误"
-          git push origin "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
+          git push -f origin "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
           echo "PUSHED=1" >> $GITHUB_ENV
 
       - name: Dispatch build on fix branch
@@ -288,11 +269,16 @@ jobs:
             --ref "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
 
       - name: Report autofix
-        # 修成了就不开 issue（避免每轮都堆一条），只在没修成时提醒人去处理
-        if: env.STOP != 'true' && env.PUSHED != '1'
+        if: env.STOP != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue create --repo "${{ github.repository }}" \
-            --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
-            --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
+          if [ "${{ env.PUSHED }}" = "1" ]; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "构建失败，已自动生成修复分支（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
+              --body "分支 autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}，已触发构建验证。失败 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。绿了再合并。" || true
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
+              --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
+          fi
