@@ -29,5 +29,9 @@ check_optional() {
   grep -qF "$sym" "$file" || { echo "MISSING SYMBOL '$sym' in $file"; fail=1; }
 }
 check_optional app/lib/update/update_config.dart "ghjicb/dsh-Go"
+# UI 入口：插件页要真正引用翻译插件（避免只加文件不挂入口）
+check app/lib/ui/plugins/plugin_inventory_page.dart 'plugin_translate.dart'
+# 上游 API 不能被回退掉（phone_skill_use.dart 依赖它）
+check app/lib/phone/phone_channel.dart 'prepareSkillReplay'
 if [ $fail -ne 0 ]; then echo "FORK FEATURES MISSING"; exit 1; fi
 echo "fork features intact"
