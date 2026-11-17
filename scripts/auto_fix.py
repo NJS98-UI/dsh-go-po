@@ -4,7 +4,7 @@
 用法: SILICONFLOW_API_KEY=... python3 scripts/auto_fix.py /tmp/logs.zip
 成功退出码 0 且工作区有改动；无法修复时退出码 2（不视为 workflow 失败）。
 """
-import json, os, sys, urllib.request, zipfile, pathlib
+import json, os, re, subprocess, sys, urllib.request, zipfile, pathlib
 
 KEY = os.environ.get("SILICONFLOW_API_KEY")
 if not KEY:
@@ -33,6 +33,22 @@ def failed_log(zpath):
     return "\n".join(tail)
 
 
+DART_ERR = re.compile(r"(Error:|error: |Compilation failed|Target kernel_snapshot|Target dart2js|lib/[^ ]+\.dart:\d+)", re.I)
+
+
+def apply_patch(patch_text):
+    """应用 LLM 给的 unified diff（大文件用这个模式，避免整文件装不下）。"""
+    p = pathlib.Path("/tmp/autofix.patch")
+    p.write_text(patch_text if patch_text.endswith("\n") else patch_text + "\n", encoding="utf-8")
+    r = subprocess.run(["git", "apply", "--3way", "--recount", "--whitespace=fix", str(p)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print("patch failed:", (r.stderr or r.stdout).strip()[:300])
+        return False
+    p.unlink(missing_ok=True)
+    return True
+
+
 def collect_context():
     ctx = []
     for p in ("app/pubspec.yaml",):
@@ -46,6 +62,9 @@ def main():
     log = failed_log(sys.argv[1])
     if not log.strip():
         print("no log"); sys.exit(2)
+    if not DART_ERR.search(log):
+        print("log does not look like a Dart/Kotlin compile error (workflow/dependency failure?) - skip")
+        sys.exit(2)
     prompt = f"""你在修复一个 Flutter Android 项目的 CI 构建失败。
 下面是失败日志（尾部），以及项目文件片段。请判断根因，给出最小修复。
 
@@ -53,7 +72,10 @@ def main():
 - 只能修改 app/ 目录下的文件（Dart、Kotlin、yaml、gradle 都可以）。
 - 输出严格 JSON，不要 markdown 代码块：
 {{"reason":"一句话根因","confidence":"high|medium|low","changes":[{{"path":"app/...","content":"完整的新文件内容"}}]}}
-- content 必须是整个文件的完整内容（不是 diff）。
+- 文件小于 2 万字符：用 content，必须是整个文件的完整内容（不是 diff）。
+- 文件大于 2 万字符：不要整文件，改用 patch：
+  {{"path":"app/...","patch":"unified diff：--- a/<path>\n+++ b/<path>\n@@ -行,列 +行,列 @@\n 上下文\n-旧行\n+新行"}}
+  patch 只包含要改的几处，行数和上下文必须和文件实际内容对得上。
 - 最多改 3 个文件；宁可 confidence 低也不要瞎改。
 
 失败日志：
@@ -86,6 +108,11 @@ def main():
         rp = p.as_posix()
         if not rp.startswith("app/") or ".." in rp:
             print("reject path", rp); continue
+        patch = (ch.get("patch") or "").strip()
+        if patch:
+            if apply_patch(patch):
+                print("patched (diff)", rp); n += 1
+            continue
         content = ch.get("content") or ""
         if len(content) > 300000 or not content.strip():
             continue
