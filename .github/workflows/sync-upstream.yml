@@ -161,6 +161,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run build-apk.yml --repo ghjicb/dsh-Go --ref main -f release=true
 
+      - name: Report sync failure
+        # 合并冲突已经单独开 issue；这里只报 fetch/检查/断言这类失败
+        if: failure() && steps.merge.outcome != 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo ghjicb/dsh-Go \
+            --title "自动同步失败：$(date -u +%F)" \
+            --body "同步过程失败（不是合并冲突）。run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+
       - name: Note files upstream touched
         if: steps.check.outputs.behind == 'true' && steps.merge.outputs.TOUCHED != ''
         env:
