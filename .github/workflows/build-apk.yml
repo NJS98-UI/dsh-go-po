@@ -294,6 +294,13 @@ jobs:
             --body "AI 已经尝试修复 5 次（前 2 次 V3、后 3 次换 V4-Flash），构建还是失败，停止自动修复。最后一次 run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
           echo "STOP=true" >> $GITHUB_ENV
 
+      - name: Fetch upstream for reference
+        if: env.STOP != 'true'
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/ccch1mneyyy/dsh-go.git 2>/dev/null || true
+          git fetch --depth 1 upstream main:refs/remotes/upstream/main
+
       - name: Download failed logs
         if: env.STOP != 'true'
         env:
