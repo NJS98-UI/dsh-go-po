@@ -168,16 +168,30 @@ jobs:
       - name: Verify APK signature
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1)
           [ -n "$APKSIGNER" ] || { echo "apksigner not found, skipping"; exit 0; }
           "$APKSIGNER" verify --print-certs app/build/app/outputs/flutter-apk/*.apk > /tmp/certs.txt
           head -6 /tmp/certs.txt
-          # 配了私签 secret 时，指纹必须和我们 keystore 一致，否则拒绝发版
+          FP='b1c9f6a1527907a0bbeb95b010031bd62ea883635d9b608cf9a04ef6285f7aae'
           if [ -n "$KEYSTORE_B64" ]; then
-            grep -qi 'b1c9f6a1527907a0bbeb95b010031bd62ea883635d9b608cf9a04ef6285f7aae' /tmp/certs.txt \
-              || { echo "::error::APK 签名指纹不对（不是我们的私签），拒绝发版"; exit 1; }
+            # 配了私签 secret 时，指纹必须和我们 keystore 一致，否则拒绝发版并开 issue（会发邮件）
+            if ! grep -qi "$FP" /tmp/certs.txt; then
+              echo "::error::APK 签名指纹不对（不是我们的私签），拒绝发版"
+              gh issue create --repo "${{ github.repository }}" \
+                --title "发版被拒：APK 不是我们的私有签名：${{ github.sha }}" \
+                --body "构建产物签名指纹和我们的发布 keystore 不一致，已拒绝发布。run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。可能原因：secrets 被改/替换、构建用了别的 keystore。" || true
+              exit 1
+            fi
             echo "signature fingerprint OK (our release keystore)"
+          elif [ "${{ github.event.inputs.release }}" = "true" ]; then
+            # 要发版却没有发布签名 secret：直接拒绝，避免把 debug 签名包发出去
+            echo "::error::要发版但没有 RELEASE_KEYSTORE_B64，拒绝发版"
+            gh issue create --repo "${{ github.repository }}" \
+              --title "发版被拒：缺少发布签名 secret：${{ github.sha }}" \
+              --body "这次构建是 release=true，但仓库没有配置 RELEASE_KEYSTORE_B64，产物会是 debug 签名，已拒绝发布。run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。" || true
+            exit 1
           fi
 
       - uses: actions/upload-artifact@v4
