@@ -60,12 +60,40 @@ def apply_patch(patch_text):
     return True
 
 
-def collect_context():
+DART_FILE = re.compile(r"package:dsh_app/([\w/]+\.dart)")
+
+
+def upstream_refs(log):
+    """从错误日志里认出我们保留的旧文件，附上上游同路径版本，供模型把新 API 合并进来。"""
+    out, seen = [], set()
+    for m in DART_FILE.finditer(log):
+        rel = "app/lib/" + m.group(1)
+        if rel in seen:
+            continue
+        seen.add(rel)
+        try:
+            r = subprocess.run(["git", "show", f"upstream/main:{rel}"],
+                               capture_output=True, text=True, timeout=60)
+        except Exception:
+            continue
+        if r.returncode != 0 or not r.stdout.strip():
+            continue
+        body = r.stdout
+        if len(body) > 24000:
+            body = body[:24000] + "\n/* ... 已截断 ... */\n"
+        out.append(f"### 上游（ccch1mneyyy/dsh-go）同路径文件 {rel}\n```dart\n{body}\n```")
+    return "\n\n".join(out)
+
+
+def collect_context(log=""):
     ctx = []
     for p in ("app/pubspec.yaml",):
         f = pathlib.Path(p)
         if f.exists():
             ctx.append(f"### {p}\n```\n{f.read_text(encoding='utf-8', errors='replace')[:4000]}\n```")
+    up = upstream_refs(log)
+    if up:
+        ctx.append(up)
     return "\n\n".join(ctx)
 
 
@@ -88,11 +116,14 @@ def main():
   {{"path":"app/...","patch":"unified diff：--- a/<path>\n+++ b/<path>\n@@ -行,列 +行,列 @@\n 上下文\n-旧行\n+新行"}}
   patch 只包含要改的几处，行数和上下文必须和文件实际内容对得上。
 - 最多改 3 个文件；宁可 confidence 低也不要瞎改。
+- 如果错误显示我们的文件缺少上游新增的 API/字段/常量（下面附了上游同路径文件），把上游新增的部分合并进我们的文件；
+  但必须保留本 fork 的功能：setShellMode / PhoneShellStatus.prepareSkillReplay / discardSkillReplay / ShellGuard / 插件翻译 / updateRepo=ghjicb/dsh-Go。
+  不要整份抄上游、不要把 OURS 名单里的文件回退成上游原样。
 
 失败日志：
 {log[-12000:]}
 
-{collect_context()}
+{collect_context(log)}
 """
     body = json.dumps({"model": MODEL, "temperature": 0.1, "max_tokens": 8000,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
