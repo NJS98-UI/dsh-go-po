@@ -67,6 +67,12 @@ jobs:
       - name: Check fork features intact
         run: bash scripts/check-fork-symbols.sh
 
+      - name: Cache JDK 17 (temurin)
+        uses: actions/cache@v4
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk
+          key: jdk-temurin-17
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
