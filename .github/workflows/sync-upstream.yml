@@ -110,6 +110,12 @@ jobs:
           for f in $OURS .github; do
             git checkout HEAD -- "$f" 2>/dev/null || true
           done
+          # 1b) 上游新加的 .github 文件（HEAD 里没有的）必须删掉：
+          #     GITHUB_TOKEN（GitHub App）没有 workflows 权限，带新 workflow 文件 push 会被拒。
+          git ls-tree -r --name-only HEAD -- .github > /tmp/ours_gh.txt
+          git diff --name-only --diff-filter=A HEAD -- .github | while read -r f; do
+            grep -qxF "$f" /tmp/ours_gh.txt || { echo "drop upstream-only workflow: $f"; git rm -q -f -- "$f" 2>/dev/null || rm -f "$f"; }
+          done
 
           # 2) pubspec 整份用上游的（依赖、SDK、版本号都跟上游走）
           git show "${{ steps.check.outputs.ref }}:app/pubspec.yaml" > app/pubspec.yaml
