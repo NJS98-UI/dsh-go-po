@@ -145,8 +145,17 @@ export function apply(ctx) {
     internal fun patchYaml(rootfs: File): String {
         val info = runCatching { Json.parse(guestFile(rootfs, "/etc/dsh-app/runtime.json").readText()) as? Map<*, *> }.getOrNull()
         val supported = (info?.get("dshPatches") as? List<*>)?.contains(CALLER_PATCH) == true
-        return PATCH_YAML + (if (supported) "        dshGoPhoneCaller: true\n" else "") + DIAGNOSTICS_PRESET_YAML
+        return PATCH_YAML + (if (supported) "        dshGoPhoneCaller: true\n" else "") + DIAGNOSTICS_PRESET_YAML + PRESET_DEFAULT_YAML
     }
+
+    /** 默认 agent 预设固定 standard：不走 PTC/run_code（扳手），命令直接可见。patch 条目会替换整个 config，所以重述全部字段。 */
+    const val PRESET_DEFAULT_YAML = """    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
+      config:
+        default: standard
+        selectedDefault: standard
+"""
+
 
     /** Writes this launch's socket name and token, owner-only. */
     fun writeConfig(rootfs: File, endpoint: Endpoint) {
