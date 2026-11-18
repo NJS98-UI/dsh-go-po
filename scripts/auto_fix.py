@@ -14,7 +14,18 @@ MODEL = os.environ.get("AUTOFIX_MODEL", "deepseek-ai/DeepSeek-V3")
 
 
 def failed_log(zpath):
-    z = zipfile.ZipFile(zpath)
+    try:
+        z = zipfile.ZipFile(zpath)
+    except zipfile.BadZipFile:
+        import os as _os
+        try: size = _os.path.getsize(zpath)
+        except OSError: size = -1
+        head = ""
+        try:
+            with open(zpath, "rb") as f: head = f.read(200).decode("utf-8", "replace")
+        except OSError: pass
+        print(f"BAD_LOG_ARCHIVE: {zpath} 不是 zip（{size} 字节），内容开头：{head!r}", file=sys.stderr)
+        sys.exit(2)
     best = ""
     for n in z.namelist():
         if not n.endswith(".txt"):
