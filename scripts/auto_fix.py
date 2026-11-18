@@ -13,15 +13,21 @@ API = "https://api.siliconflow.cn/v1/chat/completions"
 MODEL = os.environ.get("AUTOFIX_MODEL", "deepseek-ai/DeepSeek-V3")
 
 
+def error_span_lines(lines, keep=5, cap=400):
+    """所有 error/failed 行 + 各自上下文，去重后按出现顺序，最多 cap 行。"""
+    picked = {}
+    for i, l in enumerate(lines):
+        if "error" in l.lower() or "failed" in l.lower():
+            for j in range(max(0, i - keep), min(len(lines), i + keep + 1)):
+                picked.setdefault(j, lines[j])
+    keys = sorted(picked)[-cap:]
+    return "\n".join(picked[k] for k in keys)
+
+
 def failed_log(zpath):
     if not zpath.endswith(".zip"):
         txt = pathlib.Path(zpath).read_text(encoding="utf-8", errors="replace")
-        lines = txt.splitlines()
-        idx = 0
-        for i, l in enumerate(lines):
-            if "error" in l.lower() or "failed" in l.lower():
-                idx = max(0, i - 40)
-        return "\n".join(lines[idx:][-260:])
+        return error_span_lines(txt.splitlines())
     try:
         z = zipfile.ZipFile(zpath)
     except zipfile.BadZipFile:
@@ -42,14 +48,7 @@ def failed_log(zpath):
         if ("Build APK" in n) or ("error" in t.lower() and "flutter" in t.lower()):
             if len(t) > len(best):
                 best = t
-    lines = best.splitlines()
-    # 只留错误附近：从最后出现 error/failed 的位置往回取
-    idx = 0
-    for i, l in enumerate(lines):
-        if "error" in l.lower() or "failed" in l.lower():
-            idx = max(0, i - 40)
-    tail = lines[idx:][-260:]
-    return "\n".join(tail)
+    return error_span_lines(best.splitlines())
 
 
 DART_ERR = re.compile(r"(Error:|error: |Compilation failed|Target kernel_snapshot|Target dart2js|lib/[^ ]+\.dart:\d+)", re.I)
@@ -93,12 +92,33 @@ def upstream_refs(log):
     return "\n\n".join(out)
 
 
+def local_refs(log):
+    """错误涉及的、本 fork 里的当前文件（diff 必须基于它，不能只照抄上游）。"""
+    out, seen = [], set()
+    for m in DART_FILE.finditer(log):
+        rel = "app/lib/" + m.group(1)
+        if rel in seen:
+            continue
+        seen.add(rel)
+        f = pathlib.Path(rel)
+        if not f.exists():
+            continue
+        body = f.read_text(encoding="utf-8", errors="replace")
+        if len(body) > 24000:
+            body = body[:24000] + "\n/* ... 已截断 ... */\n"
+        out.append(f"### 本 fork 当前文件 {rel}（你的 diff 必须基于这个文件的实际内容）\n```dart\n{body}\n```")
+    return "\n\n".join(out)
+
+
 def collect_context(log=""):
     ctx = []
     for p in ("app/pubspec.yaml",):
         f = pathlib.Path(p)
         if f.exists():
             ctx.append(f"### {p}\n```\n{f.read_text(encoding='utf-8', errors='replace')[:4000]}\n```")
+    local = local_refs(log)
+    if local:
+        ctx.append(local)
     up = upstream_refs(log)
     if up:
         ctx.append(up)
