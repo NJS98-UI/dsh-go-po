@@ -120,7 +120,7 @@
 安装要求 Android 8.0（API 26）及以上，本仓库只提供 **arm64** 包；x86_64 设备请用[原版](https://github.com/ccch1mneyyy/dsh-go/releases)。
 
 1. 从 [GitHub Releases](https://github.com/ghjicb/dsh-Go/releases/latest) 下载 `app-arm64-release.apk`
-2. 覆盖原版包需要同签名，或自行绕过签名校验
+2. 本项目和原版包签名不一致，覆盖安装请自行绕过签名校验
 3. **装之前先备份**，本包的行为与原版不同，出问题不可逆
 
 ---
