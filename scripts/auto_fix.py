@@ -151,7 +151,8 @@ def main():
   {{"path":"app/...","patch":"--- a/<path>\n+++ b/<path>\n@@ -行,列 +行,列 @@\n 上下文\n-旧行\n+新行"}}
   行号和上下文必须和文件实际内容对得上。
 - 只有文件小于 8000 字符时，才允许用 content 给整份文件。
-- 最多改 3 个文件；宁可 confidence 低也不要瞎改。
+- 一次只改 1 个文件、优先改最关键的；最多改 3 个文件；宁可 confidence 低也不要瞎改。
+- patch 总计不超过 40 行（上下文行也算）；如果改动更大，只写最关键的那一处，不要整段重写。
 - 如果错误显示我们的文件缺少上游新增的 API/字段/常量（下面附了上游同路径文件），把上游新增的部分合并进我们的文件；
   但必须保留本 fork 的功能：setShellMode / PhoneShellStatus.prepareSkillReplay / discardSkillReplay / ShellGuard / 插件翻译 / updateRepo=ghjicb/dsh-Go。
   不要整份抄上游、不要把 OURS 名单里的文件回退成上游原样。
@@ -161,7 +162,7 @@ def main():
 
 {collect_context(log)}
 """
-    body = json.dumps({"model": MODEL, "temperature": 0.1, "max_tokens": 8000,
+    body = json.dumps({"model": MODEL, "temperature": 0.1, "max_tokens": 16000,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(API, data=body, headers={
         "Authorization": "Bearer " + KEY, "Content-Type": "application/json"})
