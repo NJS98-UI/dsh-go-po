@@ -199,7 +199,17 @@ jobs:
             | jq -r '.tag_name // empty' | sed 's/^[vV]//') || UPSTREAM=""
           [ -n "$UPSTREAM" ] || UPSTREAM="未知"
           echo "UPSTREAM=$UPSTREAM" >> $GITHUB_ENV
-          CHANGELOG=$(git log --oneline --no-merges -1)
+          TAG="v$VERSION"
+          PREV_BODY=$(gh release view "$TAG" --json body -q .body 2>/dev/null || true)
+          if [ -n "$PREV_BODY" ]; then
+            N=$(printf '%s' "$PREV_BODY" | sed -n 's/.*第 \([0-9]\+\) 次重建.*/\1/p' | head -1)
+            N=$(( ${N:-0} + 1 ))
+            CHANGES=$(git log --oneline --no-merges -5 | sed 's/^[a-f0-9]\{7,40\} /- /' | tr -d '\r')
+            CHANGELOG="第 $N 次重建（修复 #$N）"
+            [ -n "$CHANGES" ] && CHANGELOG="$CHANGELOG"$'\n'"$CHANGES"
+          else
+            CHANGELOG="同步上游更新，修复部分 bug"
+          fi
           BUILT_AT=$(date -u +%Y-%m-%dT%H:%MZ)
           python3 - "$VERSION" "$CHANGELOG" "$UPSTREAM" "$BUILT_AT" <<'PY'
           import pathlib, sys
