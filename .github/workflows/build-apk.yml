@@ -107,6 +107,12 @@ jobs:
       - name: Accept Android licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
 
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-zstd-file-gpgv
+
       - name: Install toolchain deps
         run: |
           sudo apt-get update -qq
