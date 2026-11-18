@@ -148,7 +148,19 @@ jobs:
         run: bash runtime/build-runtime.sh arm64-v8a
 
       - name: Build APK
-        run: DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64
+        shell: bash
+        run: |
+          set -o pipefail
+          DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 2>&1 | tee /tmp/build.log
+
+      - name: Upload build log
+        if: failure() && !cancelled()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: build-log
+          path: /tmp/build.log
+          retention-days: 3
 
       - name: Show artifacts
         run: find app/build/app/outputs -name '*.apk' -exec ls -lh {} \;
@@ -301,23 +313,24 @@ jobs:
           git remote add upstream https://github.com/ccch1mneyyy/dsh-go.git 2>/dev/null || true
           git fetch --depth 1 upstream main:refs/remotes/upstream/main
 
-      - name: Download failed logs
+      - name: Download failed build log
         if: env.STOP != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: build-log
+          path: /tmp/buildlog
+
+      - name: Check build log present
+        if: env.STOP != 'true'
         run: |
-          set -euo pipefail
-          ok=0
-          for i in 1 2 3 4 5; do
-            if curl -fL --retry 3 -sS -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" -o /tmp/logs.zip; then
-              if python3 -c "import zipfile; zipfile.ZipFile('/tmp/logs.zip')" 2>/dev/null; then ok=1; break; fi
-            fi
-            echo "failed-run logs 还没就绪（第 $i 次），10 秒后重试"
-            sleep 10
-          done
-          if [ "$ok" != 1 ]; then echo "STOP=true" >> $GITHUB_ENV; echo "::warning::failed run 的日志包下载不下来，跳过自动修复"; exit 0; fi
-          echo "logs ok: $(stat -c %s /tmp/logs.zip) bytes"
+          if [ -s /tmp/buildlog/build.log ]; then
+            echo "LOG=/tmp/buildlog/build.log" >> $GITHUB_ENV
+            echo "build log: $(stat -c %s /tmp/buildlog/build.log) bytes"
+          else
+            echo "STOP=true" >> $GITHUB_ENV
+            echo "::warning::没有构建日志 artifact，跳过自动修复"
+          fi
 
       - name: Auto fix with LLM
         if: env.STOP != 'true'
@@ -334,7 +347,7 @@ jobs:
             if [ "$n" -le 2 ]; then MODEL="deepseek-ai/DeepSeek-V3"; else MODEL="deepseek-ai/DeepSeek-V4-Flash"; fi
             echo "第 $n 次修复尝试（根 run $ROOT，模型 $MODEL）"
             git checkout -- . 2>/dev/null || true
-            if AUTOFIX_MODEL="$MODEL" python3 scripts/auto_fix.py /tmp/logs.zip; then
+            if AUTOFIX_MODEL="$MODEL" python3 scripts/auto_fix.py "$LOG"; then
               if [ -n "$(git diff --name-only)" ]; then
                 echo "--- changed files ---"
                 git diff --name-only
