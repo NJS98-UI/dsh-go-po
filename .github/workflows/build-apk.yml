@@ -121,13 +121,22 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
           test -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
 
-      - name: Cache runtime inputs
-        uses: actions/cache@v4
+      - name: Restore runtime inputs
+        uses: actions/cache/restore@v4
         with:
           path: runtime/.cache
           key: runtime-${{ runner.os }}-${{ hashFiles('runtime/**') }}-ubuntu-24.04.5
           restore-keys: |
             runtime-${{ runner.os }}-
+
+      - name: Save runtime inputs
+        # 缓存保存失败（GitHub 侧偶发）不该让整个 job 标红、触发失败邮件；产物已经编好了。
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: runtime/.cache
+          key: runtime-${{ runner.os }}-${{ hashFiles('runtime/**') }}-ubuntu-24.04.5
 
       - name: Patch runtime mirrors (fallback)
         # 上游 runtime 脚本把 Ubuntu base 镜像写死成清华；那边 403 时整个构建挂掉。
