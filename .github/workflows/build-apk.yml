@@ -394,5 +394,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue create --repo "${{ github.repository }}" \
-            --title "构建失败，自动修复没成（第 ${{ steps.attempt.outputs.n }}/5 次）：${{ github.sha }}" \
+            --title "构建失败，自动修复没成：${{ github.sha }}" \
             --body "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}。需要人看。" || true
