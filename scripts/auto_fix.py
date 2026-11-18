@@ -56,12 +56,20 @@ DART_ERR = re.compile(r"(Error:|error: |Compilation failed|Target kernel_snapsho
 
 def apply_patch(patch_text):
     """应用 LLM 给的 unified diff（大文件用这个模式，避免整文件装不下）。"""
+    for line in patch_text.splitlines():
+        if line.startswith("+++ b/"):
+            pth = line[6:].split("\t")[0].strip()
+            if not pth.startswith("app/") or ".." in pth:
+                print("reject patch path", pth)
+                return False
     p = pathlib.Path("/tmp/autofix.patch")
     p.write_text(patch_text if patch_text.endswith("\n") else patch_text + "\n", encoding="utf-8")
     r = subprocess.run(["git", "apply", "--3way", "--recount", "--whitespace=fix", str(p)],
                        capture_output=True, text=True)
     if r.returncode != 0:
         print("patch failed:", (r.stderr or r.stdout).strip()[:300])
+        subprocess.run(["git", "checkout", "--", "."], capture_output=True, text=True)
+        subprocess.run(["git", "clean", "-fd"], capture_output=True, text=True)
         return False
     p.unlink(missing_ok=True)
     return True
