@@ -33,5 +33,8 @@ check_optional app/lib/update/update_config.dart "ghjicb/dsh-Go"
 check app/lib/ui/plugins/plugin_inventory_page.dart 'plugin_translate.dart'
 # 上游 API 不能被回退掉（phone_skill_use.dart 依赖它）
 check app/lib/phone/phone_channel.dart 'prepareSkillReplay'
+# 默认终端预设（不走 run_code 扳手）：PhoneGuest 合并时必须保留
+check $K/PhoneGuest.kt 'selectedDefault: standard'
+check $K/PhoneGuest.kt 'PRESET_DEFAULT_YAML'
 if [ $fail -ne 0 ]; then echo "FORK FEATURES MISSING"; exit 1; fi
 echo "fork features intact"
