@@ -119,10 +119,10 @@ def main():
 - 只能修改 app/ 目录下的文件（Dart、Kotlin、yaml、gradle 都可以）。
 - 输出严格 JSON，不要 markdown 代码块：
 {{"reason":"一句话根因","confidence":"high|medium|low","changes":[{{"path":"app/...","content":"完整的新文件内容"}}]}}
-- 文件小于 2 万字符：用 content，必须是整个文件的完整内容（不是 diff）。
-- 文件大于 2 万字符：不要整文件，改用 patch：
-  {{"path":"app/...","patch":"unified diff：--- a/<path>\n+++ b/<path>\n@@ -行,列 +行,列 @@\n 上下文\n-旧行\n+新行"}}
-  patch 只包含要改的几处，行数和上下文必须和文件实际内容对得上。
+- 首选 patch（unified diff）：只写改动的那几行，不要整份文件。格式：
+  {{"path":"app/...","patch":"--- a/<path>\n+++ b/<path>\n@@ -行,列 +行,列 @@\n 上下文\n-旧行\n+新行"}}
+  行号和上下文必须和文件实际内容对得上。
+- 只有文件小于 8000 字符时，才允许用 content 给整份文件。
 - 最多改 3 个文件；宁可 confidence 低也不要瞎改。
 - 如果错误显示我们的文件缺少上游新增的 API/字段/常量（下面附了上游同路径文件），把上游新增的部分合并进我们的文件；
   但必须保留本 fork 的功能：setShellMode / PhoneShellStatus.prepareSkillReplay / discardSkillReplay / ShellGuard / 插件翻译 / updateRepo=ghjicb/dsh-Go。
