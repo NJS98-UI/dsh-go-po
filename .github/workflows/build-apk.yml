@@ -299,9 +299,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" \
-            -o /tmp/logs.zip || true
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3 4 5; do
+            if curl -fL --retry 3 -sS -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" -o /tmp/logs.zip; then
+              if python3 -c "import zipfile; zipfile.ZipFile('/tmp/logs.zip')" 2>/dev/null; then ok=1; break; fi
+            fi
+            echo "failed-run logs 还没就绪（第 $i 次），10 秒后重试"
+            sleep 10
+          done
+          if [ "$ok" != 1 ]; then echo "STOP=true" >> $GITHUB_ENV; echo "::warning::failed run 的日志包下载不下来，跳过自动修复"; exit 0; fi
+          echo "logs ok: $(stat -c %s /tmp/logs.zip) bytes"
 
       - name: Auto fix with LLM
         if: env.STOP != 'true'
