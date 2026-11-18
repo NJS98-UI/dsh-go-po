@@ -237,8 +237,14 @@ jobs:
           BRANCH="${GITHUB_REF#refs/heads/}"
           git config user.name "dsh-go-autofix"
           git config user.email "autofix@dsh-go.local"
+          git fetch origin main
           git checkout -B main origin/main
-          git merge --ff-only "$BRANCH"
+          if ! git merge --ff-only "$BRANCH"; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "自动修复合并失败（main 已前进）：$BRANCH" \
+              --body "修复分支已构建成功，但 main 在构建期间前进了，ff-only 合并失败。需要人看：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+            exit 1
+          fi
           # 加 [skip ci] 避免再触发一次 push 构建；下面单独触发发版构建
           git commit --amend -m "$(git log -1 --format=%s) [skip ci]"
           git push origin main
@@ -351,6 +357,7 @@ jobs:
               if [ -n "$(git diff --name-only)" ]; then
                 echo "--- changed files ---"
                 git diff --name-only
+                echo "N=$n" >> $GITHUB_ENV
                 break
               fi
             fi
@@ -369,10 +376,11 @@ jobs:
         run: |
           git config user.name "dsh-go-autofix"
           git config user.email "autofix@dsh-go.local"
-          git checkout -b "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
+          BR="autofix/${{ steps.attempt.outputs.root }}/${{ env.N }}"
+          git checkout -b "$BR"
           git add -A
-          git commit -m "autofix(${{ steps.attempt.outputs.n }}/5): 修复构建错误"
-          git push -f origin "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
+          git commit -m "autofix(${{ env.N }}/5): 修复构建错误"
+          git push -f origin "$BR"
           echo "PUSHED=1" >> $GITHUB_ENV
 
       - name: Dispatch build on fix branch
@@ -381,7 +389,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run build-apk.yml --repo "${{ github.repository }}" \
-            --ref "autofix/${{ steps.attempt.outputs.root }}/${{ steps.attempt.outputs.n }}"
+            --ref "autofix/${{ steps.attempt.outputs.root }}/${{ env.N }}"
 
       - name: Report autofix
         # 修成了就不开 issue（避免每轮都堆一条），只在没修成时提醒
