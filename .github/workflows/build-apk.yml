@@ -354,6 +354,7 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           AUTOFIX_MODEL: ${{ steps.attempt.outputs.model }}
         run: |
+          exec > >(tee /tmp/autofix.log) 2>&1
           set -uo pipefail
           ROOT="${{ github.run_id }}"
           START=$(( ${{ steps.attempt.outputs.n }} - 1 ))
@@ -380,6 +381,14 @@ jobs:
             echo "AFTER=0" >> $GITHUB_ENV
             echo "AUTOFIX_SKIPPED=1" >> $GITHUB_ENV
           fi
+
+      - name: Upload autofix log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autofix-log
+          path: /tmp/autofix.log
+          if-no-files-found: ignore
 
       - name: Push autofix branch
         if: env.AFTER != '0' && env.STOP != 'true'
