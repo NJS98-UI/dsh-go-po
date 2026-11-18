@@ -122,7 +122,12 @@ jobs:
 
           # 3) 名单外的冲突文件一律用上游
           git diff --name-only --diff-filter=U | while read -r f; do
-            git checkout --theirs -- "$f" 2>/dev/null || true
+            if git ls-files -u -- "$f" | grep -q "stage 3"; then
+              git checkout --theirs -- "$f" 2>/dev/null || true
+            else
+              # modify/delete：上游删了文件，--theirs 没有内容，直接删
+              git rm -q -f -- "$f" 2>/dev/null || rm -f "$f"
+            fi
           done
 
           git add -A
