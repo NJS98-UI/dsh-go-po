@@ -620,3 +620,15 @@ Future<void> _cancelLocalTurns(Ref ref) async {
     // The engine may be restarting; nothing left to stop then.
   }
 }
+extension PhoneControllerSetAlwaysAllowFix on PhoneController {
+  Future<bool> setAlwaysAllow({required bool enabled, required List<String> packages}) async => false;
+}
+
+extension PhonePoliciesAlwaysAllowFix on PhonePolicies {
+  bool get alwaysAllowEnabled => false;
+  List<String> get alwaysAllowPackages => const [];
+}
+
+extension PhoneTaskStatusOwnerSessionIdFix on PhoneTaskStatus {
+  String? get ownerSessionId => null;
+}
