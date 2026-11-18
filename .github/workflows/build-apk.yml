@@ -213,7 +213,7 @@ jobs:
             | jq -r '.tag_name // empty' | sed 's/^[vV]//') || UPSTREAM=""
           [ -n "$UPSTREAM" ] || UPSTREAM="未知"
           echo "UPSTREAM=$UPSTREAM" >> $GITHUB_ENV
-          CHANGELOG=$(git log --oneline --no-merges -1)
+          CHANGELOG="同步上游"
           BUILT_AT=$(date -u +%Y-%m-%dT%H:%MZ)
           python3 - "$VERSION" "$CHANGELOG" "$UPSTREAM" "$BUILT_AT" <<'PY'
           import pathlib, sys
@@ -243,7 +243,7 @@ jobs:
           fi
           gh release create "$TAG" dist/* --repo ghjicb/dsh-Go --title "DSH Go $VERSION" --notes-file /tmp/notes.md
 
-      - name: Auto merge autofix branch (no release)
+      - name: Auto merge autofix branch (with release)
         if: success() && startsWith(github.ref, 'refs/heads/autofix/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -263,8 +263,8 @@ jobs:
           git commit --amend -m "$(git log -1 --format=%s) [skip ci]"
           git push origin main
           git push origin --delete "$BRANCH" || true
-          # 不自动发版：同版本覆盖会让所有用户反复收到「有更新」提示。
-          # 修复先留在 main，等上游发新版本一起带出去。
+          # 修复合进 main 后立刻发版（用户要求：修复后自动发版）
+          gh workflow run build-apk.yml --ref main -f release=true
           for n in $(gh issue list --repo "${{ github.repository }}" --search "自动修复没成 in:title" --state open --json number -q '.[].number' 2>/dev/null); do
             gh issue close "$n" --repo "${{ github.repository }}" --comment "已自动修复并合并到 main（下个上游版本发版时带出）" || true
           done
