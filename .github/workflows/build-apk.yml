@@ -121,7 +121,30 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
           test -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
 
+      - name: Cache runtime inputs
+        uses: actions/cache@v4
+        with:
+          path: runtime/.cache
+          key: runtime-${{ runner.os }}-${{ hashFiles('runtime/**') }}-ubuntu-24.04.5
+          restore-keys: |
+            runtime-${{ runner.os }}-
+
+      - name: Patch runtime mirrors (fallback)
+        # 上游 runtime 脚本把 Ubuntu base 镜像写死成清华；那边 403 时整个构建挂掉。
+        # 运行时改成「可覆盖 + 官方 cdimage 兜底」，不动上游文件本体（避免同步时被覆盖）。
+        run: |
+          set -euo pipefail
+          f=runtime/build-runtime.sh
+          sed -i 's|^UBUNTU_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release"|UBUNTU_MIRROR="${UBUNTU_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release}"|' "$f"
+          sed -i 's|  fetch "$UBUNTU_MIRROR/$name" "$dir/$name" "$pin"|  fetch "$UBUNTU_MIRROR/$name" "$dir/$name" "$pin" "${UBUNTU_FALLBACK:-https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release}/$name"|' "$f"
+          grep -q 'UBUNTU_MIRROR:-' "$f"
+          grep -q 'UBUNTU_FALLBACK' "$f"
+          echo "runtime mirrors patched"
+
       - name: Build runtime (arm64-v8a)
+        env:
+          UBUNTU_MIRROR: https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release
+          UBUNTU_FALLBACK: https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release
         run: bash runtime/build-runtime.sh arm64-v8a
 
       - name: Build APK
