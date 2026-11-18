@@ -10,7 +10,7 @@ KEY = os.environ.get("SILICONFLOW_API_KEY")
 if not KEY:
     print("no key, skip"); sys.exit(2)
 API = "https://api.siliconflow.cn/v1/chat/completions"
-MODEL = os.environ.get("AUTOFIX_MODEL", "deepseek-ai/DeepSeek-V3")
+MODEL = os.environ.get("AUTOFIX_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
 
 
 def error_span_lines(lines, keep=5, cap=400):
