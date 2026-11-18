@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../state/provider_keys.dart';
+import '../../state/providers_state.dart';
 import '../../state/settings_state.dart';
 
 /// 一次翻译的结果：成功带译文，失败带能看懂的原因。
@@ -21,15 +23,11 @@ class TranslationOutcome {
 
 /// 插件描述的机器翻译。
 ///
-/// 走 DeepSeek 的 chat 接口，用用户自己的 API key；结果按「插件 + 语言」
-/// 缓存在 SharedPreferences 里，同一个插件翻过一次就不再花钱。
-///
-/// 模型按 [_models] 顺序试：老名字失效时自动落到新名字上。
+/// 请求发给「当前能用的模型路由」，而不是写死 DeepSeek：
+/// 有自定义渠道就用它的 baseUrl + key + 模型；没有才回退到 DeepSeek 官方 key。
+/// 结果按「插件 + 语言」缓存在 SharedPreferences 里，同一个插件翻过一次就不再花钱。
 class PluginTranslator {
   const PluginTranslator();
-
-  static const _models = ['deepseek-chat', 'deepseek-flash'];
-  static const _endpoint = 'https://api.deepseek.com/chat/completions';
   static const _prefPrefix = 'plugin_tr_';
 
   static String _cacheKey(String key, String lang) => '$_prefPrefix${lang}_$key';
@@ -51,16 +49,16 @@ class PluginTranslator {
     required String key,
     required String text,
     required String lang,
-    required String apiKey,
+    required TranslationRoute route,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return const TranslationOutcome.fail('这段说明是空的');
     final hit = await cached(key, lang);
     if (hit != null) return TranslationOutcome.ok(hit);
 
-    TranslationOutcome last = const TranslationOutcome.fail('没有可用的模型');
-    for (final model in _models) {
-      final out = await _request(trimmed, lang, apiKey, model);
+    TranslationOutcome last = TranslationOutcome.fail('没有可用的模型（${route.label}）');
+    for (final model in route.models) {
+      final out = await _request(trimmed, lang, route, model);
       if (out.isOk) {
         await _save(key, lang, out.text!);
         return out;
@@ -76,7 +74,7 @@ class PluginTranslator {
   Future<TranslationOutcome> _request(
     String text,
     String lang,
-    String apiKey,
+    TranslationRoute route,
     String model,
   ) async {
     final target = switch (lang) {
@@ -87,7 +85,7 @@ class PluginTranslator {
       ..connectionTimeout = const Duration(seconds: 12)
       ..idleTimeout = const Duration(seconds: 3);
     try {
-      final req = await client.postUrl(Uri.parse(_endpoint));
+      final req = await client.postUrl(Uri.parse(route.endpoint));
       // 自己编码成 UTF-8 字节再 add()：不碰 IOSink.encoding。
       // 先设 headers 再改 encoding 会抛 Bad state: IOSink encoding is not mutable。
       final payload = utf8.encode(jsonEncode({
@@ -105,7 +103,7 @@ class PluginTranslator {
         ],
       }));
       req.headers
-        ..set(HttpHeaders.authorizationHeader, 'Bearer $apiKey')
+        ..set(HttpHeaders.authorizationHeader, 'Bearer ${route.apiKey}')
         ..set(HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8')
         ..set(HttpHeaders.contentLengthHeader, '${payload.length}');
       req.add(payload);
@@ -133,9 +131,9 @@ class PluginTranslator {
       }
       return TranslationOutcome.ok(content.trim());
     } on SocketException catch (e) {
-      return TranslationOutcome.fail('连不上 api.deepseek.com（${e.osError?.message ?? e.message}）');
+      return TranslationOutcome.fail('连不上 ${route.host}（${e.osError?.message ?? e.message}）');
     } on TimeoutException {
-      return const TranslationOutcome.fail('请求超时（api.deepseek.com 没在 50 秒内回）');
+      return TranslationOutcome.fail('请求超时（${route.host} 没在 50 秒内回）');
     } on HandshakeException catch (e) {
       return TranslationOutcome.fail('TLS 握手失败（${e.message}）');
     } catch (e) {
@@ -145,6 +143,61 @@ class PluginTranslator {
     }
   }
 }
+
+/// 翻译请求的实际目的地：一个 baseUrl、一组模型名和一个 key。
+///
+/// 优先用自定义渠道（用户自己加的 OpenAI 兼容服务）：它的 key 存在
+/// [ProviderKeyVault] 里，模型名取渠道声明的第一个。都没有时才回退到
+/// DeepSeek 官方（设置里的 [AppSettings.apiKey]）。
+class TranslationRoute {
+  const TranslationRoute({
+    required this.endpoint,
+    required this.models,
+    required this.apiKey,
+    required this.label,
+  });
+
+  final String endpoint;
+  final List<String> models;
+  final String apiKey;
+  final String label;
+
+  String get host => Uri.tryParse(endpoint)?.host ?? endpoint;
+}
+
+/// 解析一次翻译该走哪条路由；失败返回带原因的文案。
+final translationRouteProvider = FutureProvider<TranslationRoute>((ref) async {
+  final snapshot = await ref.watch(customProvidersProvider.future);
+  final providers = snapshot?.providers ?? const <CustomProvider>[];
+  final vault = await ref.watch(providerKeyVaultProvider).readAll();
+  for (final p in providers) {
+    final base = p.baseUrl.trim();
+    if (base.isEmpty) continue;
+    final key = vault[p.id] ?? '';
+    if (key.isEmpty) continue;
+    final models = [for (final m in p.models) m.id];
+    if (models.isEmpty) continue;
+    final endpoint = base.endsWith('/chat/completions')
+        ? base
+        : '${base.replaceFirst(RegExp(r'/+$'), '')}/chat/completions';
+    return TranslationRoute(
+      endpoint: endpoint,
+      models: models,
+      apiKey: key,
+      label: '${p.displayName}（${models.first}）',
+    );
+  }
+  final key = ref.watch(settingsProvider).apiKey.trim();
+  if (key.isEmpty) {
+    throw StateError('没有可用的模型：设置 → 模型 里配一个 key，或加一个自定义渠道');
+  }
+  return TranslationRoute(
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    models: const ['deepseek-chat', 'deepseek-flash'],
+    apiKey: key,
+    label: 'DeepSeek 官方',
+  );
+});
 
 final pluginTranslatorProvider = Provider<PluginTranslator>((ref) => const PluginTranslator());
 
@@ -211,13 +264,15 @@ class _TranslatableDescriptionState extends ConsumerState<TranslatableDescriptio
       _failed = false;
       _error = null;
     });
-    final apiKey = ref.read(settingsProvider).apiKey.trim();
-    if (apiKey.isEmpty) {
+    late final TranslationRoute route;
+    try {
+      route = await ref.read(translationRouteProvider.future);
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _failed = true;
-        _error = '没有找到 API key（设置 → 模型 里配一下）';
+        _error = '$e';
       });
       return;
     }
@@ -225,7 +280,7 @@ class _TranslatableDescriptionState extends ConsumerState<TranslatableDescriptio
           key: widget.cacheKey,
           text: widget.text,
           lang: _lang,
-          apiKey: apiKey,
+          route: route,
         );
     if (!mounted) return;
     setState(() {
