@@ -188,7 +188,7 @@ jobs:
           retention-days: 2
 
       - name: Prepare release assets
-        if: github.event.inputs.release == 'true'
+        if: github.event.inputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         run: |
           VERSION=$(sed -n 's/^version:[[:space:]]*\([^+]*\).*/\1/p' app/pubspec.yaml)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
