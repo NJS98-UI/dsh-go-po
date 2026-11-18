@@ -184,7 +184,9 @@ UpdateSources buildUpdateSources({
   return UpdateSources(
     channel: UpdateChannel.tryCreate(token: channelToken, origin: channelOrigin),
     feed: feedUrl.isEmpty ? null : Uri.tryParse(feedUrl),
-    mirrors: [?own, UpdateMirror.github, ...public],
+    // 国内直连 GitHub 常常只有几十 KB/s：公共加速器排在原站前面，
+    // 自建副本（own）仍然最优先，GitHub 原站最后兜底。
+    mirrors: [?own, ...public, UpdateMirror.github],
   );
 }
 
