@@ -14,6 +14,14 @@ MODEL = os.environ.get("AUTOFIX_MODEL", "deepseek-ai/DeepSeek-V3")
 
 
 def failed_log(zpath):
+    if not zpath.endswith(".zip"):
+        txt = pathlib.Path(zpath).read_text(encoding="utf-8", errors="replace")
+        lines = txt.splitlines()
+        idx = 0
+        for i, l in enumerate(lines):
+            if "error" in l.lower() or "failed" in l.lower():
+                idx = max(0, i - 40)
+        return "\n".join(lines[idx:][-260:])
     try:
         z = zipfile.ZipFile(zpath)
     except zipfile.BadZipFile:
