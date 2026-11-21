@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../l10n/l10n.dart';
 import '../../notify/chat_alerts.dart' show approvalText, questionText;
@@ -362,12 +363,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   /// 没有会话时的错误(建会话失败),会话内的错误走 ChatState.error。
   String? _localError;
 
+  /// 聊天页胶囊总开关（终端权限页的「聊天页显示胶囊」）。
+  bool _showPills = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scheduleInteraction();
     ref.listenManual(currentSessionProvider, (_, _) => _scheduleInteraction());
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) {
+        final v = p.getBool('chat_pills_visible') ?? true;
+        if (v != _showPills) setState(() => _showPills = v);
+      }
+    });
     _voice = VoiceInputController(
       input: _input,
       bridge: ref.read(voiceBridgeProvider),
@@ -1604,7 +1614,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final shellMode = ref.watch(phoneProvider.select((s) => s.status.shell.mode));
-    final hasRootPill = shellMode == 'safe' || shellMode == 'full';
+    final hasRootPill = _showPills && (shellMode == 'safe' || shellMode == 'full');
     final l10n = context.l10n;
     final sessionId = ref.watch(currentSessionProvider);
     final connAsync = ref.watch(activeConnectionProvider);
@@ -1813,8 +1823,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     // shows (read only; a phone on its side typing folds both away).
     final running = chat?.running ?? false;
     final pillsBesideStrip = sessionId != null && running && !typing;
-    final pillsInCapsules = !readOnly && !running && !typing;
-    final composerPills = _composerPills(
+    final pillsInCapsules = _showPills && !readOnly && !running && !typing;
+    final composerPills = !_showPills ? null : _composerPills(
       sessionId,
       autoApprove: chat?.autoApprove ?? false,
       generate: readOnly ? null : generate,
