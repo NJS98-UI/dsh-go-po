@@ -179,7 +179,7 @@ class SettingsScreen extends ConsumerWidget {
               tint: SettingsHues.abilities,
               title: '终端权限',
               value: Text(switch (phone.status.shell.mode) {
-                'safe' => '安全模式',
+                'safe' => '进阶模式',
                 'full' => '高危模式',
                 _ => '原版模式',
               }),
