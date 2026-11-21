@@ -1607,7 +1607,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final shellMode = ref.watch(phoneProvider.select((s) => s.status.shell.mode));
     final showPills = ref.watch(chatPillsVisibleProvider);
-    final hasRootPill = showPills && (shellMode == 'safe' || shellMode == 'full');
+    // 原版模式也显示胶囊：隐藏交给终端权限页的「聊天页显示胶囊」开关。
+    final hasRootPill = showPills;
     final l10n = context.l10n;
     final sessionId = ref.watch(currentSessionProvider);
     final connAsync = ref.watch(activeConnectionProvider);
