@@ -108,6 +108,31 @@ class ApkDownloader {
   /// Bytes between progress callbacks.
   final int progressStep;
 
+
+  /// 并发测速：对每个源发 Range: bytes=0-0 请求，量首字节延迟，
+  /// 返回按速度排序的 urls（测不出的排最后）。测速失败不影响下载。
+  Future<List<DownloadUrl>> _orderBySpeed(List<DownloadUrl> urls) async {
+    if (urls.length < 2) return urls;
+    final results = await Future.wait(urls.map((u) async {
+      final sw = Stopwatch()..start();
+      try {
+        final r = await http.get(
+          u.url,
+          headers: {...u.headers, 'range': 'bytes=0-0', 'accept-encoding': 'identity'},
+          timeout: const Duration(seconds: 5),
+        );
+        await r.discard();
+        sw.stop();
+        final ok = r.status == 200 || r.status == 206;
+        return (url: u, ms: ok ? sw.elapsedMilliseconds : 1 << 30);
+      } catch (_) {
+        return (url: u, ms: 1 << 30);
+      }
+    }));
+    results.sort((a, b) => a.ms.compareTo(b.ms));
+    return [for (final r in results) r.url];
+  }
+
   Future<DownloadOutcome> download({
     required String fileName,
     required String sha256,
@@ -134,7 +159,9 @@ class ApkDownloader {
     }
 
     var failure = DownloadFailure.network;
-    for (final url in urls) {
+    // 先测速选最快的源（失败不影响，按原顺序继续）。
+    final ordered = await _orderBySpeed(urls);
+    for (final url in ordered) {
       var attempt = 0;
       while (true) {
         if (cancel?.isCancelled ?? false) return const DownloadCancelled();
