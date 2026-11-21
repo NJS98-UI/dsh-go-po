@@ -610,7 +610,7 @@ object ShellGuard {
         }
         val rest = withSlash.substring(prefix.length)
         val pkg = rest.substringBefore('/')
-        // 不校验的话 `/data/user/0/*/shared_prefs/x.xml`、`/data/user/0/com.*/`、`$PKG` 都会被
+        // 不校验的话 `/data/user/0/<任意>/shared_prefs/x.xml`、`/data/user/0/com.*/`、`$PKG` 都会被
         // 当成「普通 App」放行，黑名单等于没有。形状不合法就返回 null，落回下面的 /data 整块禁区。
         if (pkg.isEmpty() || pkg.length > 200 || !PKG_NAME.matches(pkg)) return null
         return pkg
@@ -618,9 +618,9 @@ object ShellGuard {
 
     /**
      * 路径正好是某个 App 的数据根目录或它的全部内容
-     * （`/data/user/0/<包>`、`/data/data/<包>`、`<包>/*`，末尾可有 `/`）时返回包名。
+     * （`/data/user/0/<包>`、`/data/data/<包>`、`<包> 下的全部内容`，末尾可有 `/`）时返回包名。
      * 这是 `rm -rf` 最危险的形态：等于被 Deny 的 `pm clear`，不可逆。
-     * `rm -rf <包>` 和 `rm -rf <包>/*` 都要确认，只有 `<包>/cache` 这类子目录才放行。
+     * `rm -rf <包>` 和 `rm -rf <包> 下的全部内容` 都要确认，只有 `<包>/cache` 这类子目录才放行。
      */
     private fun appDataRootPackage(withSlash: String): String? {
         val pkg = appDataPackage(withSlash) ?: return null
