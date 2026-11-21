@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../state/chat_pills_state.dart';
 import '../../state/phone_state.dart';
 import '../settings/settings_widgets.dart';
 import '../shell/page_frame.dart';
@@ -48,6 +49,7 @@ class _ShellPermissionsPageState extends ConsumerState<ShellPermissionsPage> {
         _showCommands = p.getBool(_prefShowCommands) ?? false;
         _showRecent = p.getBool(_prefShowRecent) ?? true;
         _showChatPills = p.getBool(_prefChatPills) ?? true;
+        ref.read(chatPillsVisibleProvider.notifier).state = _showChatPills;
         _loaded = true;
       });
     });
@@ -74,6 +76,8 @@ class _ShellPermissionsPageState extends ConsumerState<ShellPermissionsPage> {
 
   void _setShowChatPills(bool on) {
     setState(() => _showChatPills = on);
+    // 立刻改共享状态，聊天页 watch 它，回到聊天页就生效，不用重启。
+    ref.read(chatPillsVisibleProvider.notifier).state = on;
     SharedPreferences.getInstance().then((p) => p.setBool(_prefChatPills, on));
   }
 
