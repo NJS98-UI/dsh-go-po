@@ -1823,8 +1823,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     // shows (read only; a phone on its side typing folds both away).
     final running = chat?.running ?? false;
     final pillsBesideStrip = sessionId != null && running && !typing;
-    final pillsInCapsules = _showPills && !readOnly && !running && !typing;
-    final composerPills = !_showPills ? null : _composerPills(
+    final pillsInCapsules = !readOnly && !running && !typing;
+    final composerPills = _composerPills(
       sessionId,
       autoApprove: chat?.autoApprove ?? false,
       generate: readOnly ? null : generate,
