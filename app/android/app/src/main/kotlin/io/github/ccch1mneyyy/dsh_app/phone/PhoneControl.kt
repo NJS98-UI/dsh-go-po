@@ -1047,6 +1047,16 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         val safe = shellMode() == ShellMode.SAFE
         val key = if (safe) K_SAFE_CMDS else K_FULL_CMDS
         val def = if (safe) ShellCommands.SAFE_DEFAULT else ShellCommands.DEFAULT_ALLOWED
+        // 命令清单改版之后（比如 cmd 从默认开改成默认关），旧 prefs 里存的还是上一版的默认值，
+        // 用户在 UI 里既看不到也关不掉。版本对不上就把两档都退回当前默认，并记下新版本。
+        if (prefs.getInt(K_CMDS_REV, 0) != ShellCommands.CMDS_REV) {
+            prefs.edit()
+                .putInt(K_CMDS_REV, ShellCommands.CMDS_REV)
+                .putStringSet(K_SAFE_CMDS, ShellCommands.SAFE_DEFAULT)
+                .putStringSet(K_FULL_CMDS, ShellCommands.DEFAULT_ALLOWED)
+                .apply()
+            return def
+        }
         return prefs.getStringSet(key, null) ?: def
     }
 
@@ -1076,6 +1086,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         private const val K_ALLOWED_CMDS = "shell_allowed"
         private const val K_SAFE_CMDS = "shell_safe_allowed"
         private const val K_FULL_CMDS = "shell_full_allowed"
+        private const val K_CMDS_REV = "shell_cmds_rev"
         private const val K_SDCARD = "shell_sdcard_allowed"
         private const val K_SKILL_PROMPT = "skillSavePrompt"
 
