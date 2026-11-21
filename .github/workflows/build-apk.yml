@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 2>&1 | tee /tmp/build.log
+          DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --no-companion 2>&1 | tee /tmp/build.log
 
       - name: Upload build log
         if: failure() && !cancelled()
