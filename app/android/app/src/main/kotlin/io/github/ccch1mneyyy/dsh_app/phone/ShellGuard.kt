@@ -468,11 +468,14 @@ object ShellGuard {
             // 现在 cmd 已移进 SAFE_OFF，这条是双保险：用户手动打开 cmd 之后，
             // 改动/卸载/清数据的子命令仍然拒；`cmd package list`、`cmd wifi status` 不受影响。
             if (word == "cmd") {
-                val pkgSub = Regex("""\bpackage\s+(clear|uninstall|install|uninstall-system-updates|delete|purge)\b""")
-                    .find(eff)
+                // 装/卸/清数据之外，「禁用/启用/挂起/隐藏/清缓存/删用户」同样能停掉一个 App
+                // （含银行、微信），效果和 disable 一样；查询类 list/path/dump 不受影响。
+                val pkgSub = Regex(
+                    """\bpackage\s+(clear|uninstall(?:-system-updates)?|install(?:-existing)?|delete|purge|disable|enable|set-enabled|set-hidden|suspend|unsuspend|hide|unhide|trim-caches|remove-user)\b""",
+                ).find(eff)
                 if (pkgSub != null) {
                     return ShellVerdict.Deny(
-                        "「cmd package ${pkgSub.groupValues[1]}」等于 pm 的装/卸/清数据，进阶模式下不可用。",
+                        "「cmd package ${pkgSub.groupValues[1]}」会改动/停掉一个 App，进阶模式下不可用。",
                     )
                 }
             }
@@ -816,6 +819,9 @@ object ShellCommands {
         Triple("xargs", "script", "把输入拼成命令批量执行"),
         Triple("source", "script", "加载脚本文件"),
     )
+
+    /** 命令清单的版本：默认值或组别变一次就 +1（见 PhoneControl.allowedCommands 的重置逻辑）。 */
+    const val CMDS_REV: Int = 2
 
     /** 设置页用的扁平清单，每项带分组和介绍。 */
     val CATALOG: List<Map<String, Any?>> = DEF.map {
