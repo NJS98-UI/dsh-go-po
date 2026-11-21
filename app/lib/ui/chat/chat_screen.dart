@@ -12,7 +12,6 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../l10n/l10n.dart';
 import '../../notify/chat_alerts.dart' show approvalText, questionText;
@@ -33,6 +32,7 @@ import '../../state/agents_state.dart' show subagentParentProvider;
 import '../../state/attachments.dart';
 import '../../state/balance_state.dart';
 import '../../state/chat_error_text.dart';
+import '../../state/chat_pills_state.dart';
 import '../../state/chat_state.dart';
 import '../../state/commands_state.dart';
 import '../../state/compose_inbox.dart';
@@ -363,21 +363,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   /// 没有会话时的错误(建会话失败),会话内的错误走 ChatState.error。
   String? _localError;
 
-  /// 聊天页胶囊总开关（终端权限页的「聊天页显示胶囊」）。
-  bool _showPills = true;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scheduleInteraction();
     ref.listenManual(currentSessionProvider, (_, _) => _scheduleInteraction());
-    SharedPreferences.getInstance().then((p) {
-      if (mounted) {
-        final v = p.getBool('chat_pills_visible') ?? true;
-        if (v != _showPills) setState(() => _showPills = v);
-      }
-    });
+    loadChatPillsVisible(ref);
     _voice = VoiceInputController(
       input: _input,
       bridge: ref.read(voiceBridgeProvider),
@@ -1614,7 +1606,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final shellMode = ref.watch(phoneProvider.select((s) => s.status.shell.mode));
-    final hasRootPill = _showPills && (shellMode == 'safe' || shellMode == 'full');
+    final showPills = ref.watch(chatPillsVisibleProvider);
+    final hasRootPill = showPills && (shellMode == 'safe' || shellMode == 'full');
     final l10n = context.l10n;
     final sessionId = ref.watch(currentSessionProvider);
     final connAsync = ref.watch(activeConnectionProvider);
@@ -2208,13 +2201,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                       // 终端胶囊与「完全权限」并排，都在输入框左侧。
                                       // 之前胶囊在 DockStack 卡片堆里、完全权限在输入框 leading 里，
                                       // 生成/静止切换时两者会上下错位。
-                                      leading: pillsInCapsules && (hasRootPill || composerPills != null)
+                                      // 终端胶囊只受 hasRootPill 控制：回复生成时也要在（它会自己收成圆形）；
+                                      // 其余 composer 胶囊才随 pillsInCapsules 让位。
+                                      leading: (hasRootPill || (pillsInCapsules && composerPills != null))
                                           ? Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                const RootPill(),
-                                                if (composerPills != null) ...[
-                                                  const SizedBox(width: 6),
+                                                if (hasRootPill) const RootPill(),
+                                                if (pillsInCapsules && composerPills != null) ...[
+                                                  if (hasRootPill) const SizedBox(width: 6),
                                                   composerPills,
                                                 ],
                                               ],
