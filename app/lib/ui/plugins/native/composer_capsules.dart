@@ -282,9 +282,12 @@ class _ComposerCapsuleBarState extends ConsumerState<ComposerCapsuleBar> {
         ),
     ];
     final leading = widget.leading;
-    final open = widget.visible && (items.isNotEmpty || leading != null);
+    // 终端胶囊（leading）不随 visible 收起：回复生成时它还要在，自己会收成圆形。
+    // 其余胶囊 items 仍随 visible 让位。
+    final capsules = widget.visible ? items : const <CapsuleItem>[];
+    final open = capsules.isNotEmpty || leading != null;
     if (open) {
-      _last = items;
+      _last = capsules;
       _lastLeading = leading;
     }
     return RiseReveal(
