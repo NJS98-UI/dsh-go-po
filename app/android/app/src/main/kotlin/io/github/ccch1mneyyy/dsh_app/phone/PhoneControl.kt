@@ -348,6 +348,9 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         PhoneRegistry.promptGate = prompts
         PhoneRegistry.controlListener = this
         PhoneRegistry.unlocks = { policies().unlocks }
+        // 进阶模式要判「这个包是不是系统应用」：注入了 PackageManager 才会放行普通 App 的私有数据；
+        // 不注入时 ShellGuard 一律按系统应用处理（fail-closed，App 私有数据全不放行）。
+        ShellGuard.setPackageManager(app.packageManager)
         // Never enter registry from a BackgroundControl callback's ownership monitor.
         background.onStatusChanged = { ticker.execute { sessions.backgroundCapacityChanged() } }
         background.onPreviewChanged = { main.post { preview.refresh() } }
