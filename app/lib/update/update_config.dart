@@ -140,8 +140,11 @@ class UpdateMirror {
 /// release's SHA-256 and, at install time, against the installed app's
 /// signing key.
 const publicMirrors = [
-  UpdateMirror(id: 'ghfast', label: 'ghfast.top', prefix: 'https://ghfast.top/'),
+  // 2026-11 实测：gh-proxy.net 最快（1MB 约 4.6s），gh-proxy.com 次之（8.6s），
+  // ghfast.top 经常超时（15s 下不完 1MB），排最后兜底。
+  UpdateMirror(id: 'gh-proxy-net', label: 'gh-proxy.net', prefix: 'https://gh-proxy.net/'),
   UpdateMirror(id: 'gh-proxy', label: 'gh-proxy.com', prefix: 'https://gh-proxy.com/'),
+  UpdateMirror(id: 'ghfast', label: 'ghfast.top', prefix: 'https://ghfast.top/'),
 ];
 
 const _unset = '\u0000';
