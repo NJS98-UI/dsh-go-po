@@ -1818,6 +1818,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     final running = chat?.running ?? false;
     final pillsBesideStrip = sessionId != null && running && !typing;
     final pillsInCapsules = !readOnly && !running && !typing;
+    // 回复生成中：终端胶囊收成圆形，挪到活动条右侧跟风险 chip 并排
+    // （跟「对话权限」共处一行），而不是自己在下面占一行。
+    final rootPillInline = hasRootPill && running;
     final composerPills = _composerPills(
       sessionId,
       autoApprove: chat?.autoApprove ?? false,
@@ -2185,7 +2188,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                         if (!readOnly) ComposerStripSlot(sessionId: sessionId, visible: !running),
                                       ],
                                       accessory: pillsBesideStrip
-                                          ? _stripRisk(sessionId, autoApprove: chat?.autoApprove ?? false)
+                                          ? _stripAccessory(
+                                              sessionId,
+                                              autoApprove: chat?.autoApprove ?? false,
+                                              rootPill: rootPillInline,
+                                            )
                                           : null,
                                     ),
                                   ),
@@ -2200,11 +2207,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                       sessionId: sessionId,
                                       visible: !running,
                                       // 终端胶囊与「完全权限」并排，都在输入框左侧。
-                                      // 之前胶囊在 DockStack 卡片堆里、完全权限在输入框 leading 里，
-                                      // 生成/静止切换时两者会上下错位。
-                                      // 终端胶囊只受 hasRootPill 控制：回复生成时也要在（它会自己收成圆形）；
-                                      // 其余 composer 胶囊才随 pillsInCapsules 让位。
-                                      leading: (hasRootPill || (pillsInCapsules && composerPills != null))
+                                      // 生成中它已经挪到活动条右侧（rootPillInline），这里不再放。
+                                      leading: (!rootPillInline && (hasRootPill || (pillsInCapsules && composerPills != null)))
                                           ? Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
@@ -2381,6 +2385,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   }
 
   /// 「自动允许中」/「完全权限」 beside the activity strip while a reply generates.
+  /// 活动条右侧：终端胶囊（生成中，圆形）＋风险 chip，并排一行。
+  Widget? _stripAccessory(String sessionId, {required bool autoApprove, required bool rootPill}) {
+    final risk = _stripRisk(sessionId, autoApprove: autoApprove);
+    if (!rootPill) return risk;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const RootPill(compact: true),
+        if (risk != null) ...[const SizedBox(width: 6), risk],
+      ],
+    );
+  }
+
   Widget? _stripRisk(String sessionId, {required bool autoApprove}) {
     if (autoApprove) {
       return StripRiskChip.autoApprove(
