@@ -2208,7 +2208,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                           ? Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                if (hasRootPill) const RootPill(),
+                                                // 生成中/输入中收成圆形图标：完整胶囊带文字，会把「完全权限」挤出屏幕，
+                                                // 也会在活动条和输入框之间占出一整行。
+                                                if (hasRootPill) RootPill(compact: running || typing),
                                                 if (pillsInCapsules && composerPills != null) ...[
                                                   if (hasRootPill) const SizedBox(width: 6),
                                                   composerPills,
