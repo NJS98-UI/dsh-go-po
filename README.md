@@ -1,8 +1,8 @@
-> ## ⚠️ 这是原版的修改版本
+## ⚠️ 这是原版的修改版本
+
+> 本仓库是**个人 fork**，在原版 DSH Go 上新增了 **`shell` 工具**（以 root 执行命令）、**三档终端权限**（原版 / 进阶 / 高危）、**进阶模式安全加固**，以及若干界面修复。
 >
-> 本仓库是**个人 fork**，在原版 DSH Go 上新增了 **`shell` 工具**（以 root 执行命令）与 **三档终端权限**（原版 / 进阶 / 高危）：由你决定 AI 能执行哪些命令，默认关闭。
->
-> **进阶模式有白名单与路径保护；高危模式不给任何保护——它可以把手机变砖、删光数据、暴露隐私。**
+> **进阶模式有白名单、路径保护、敏感应用清单与系统应用规则；高危模式不给任何保护——它可以把手机变砖、删光数据、暴露隐私。**
 >
 > **仅供测试与学习使用。请勿安装在存有重要数据、或你唯一的手机上。**
 >
@@ -10,11 +10,11 @@
 
 ---
 
-# DSH Go（个人 fork · 含三档终端权限）
+# DSH Go（个人 fork · 含三档终端权限与安全加固）
 
 把 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 装进口袋：在手机上运行 DSH 引擎与 Ubuntu 环境，通过聊天界面使用 AI。
 
-**第三方修改版本，非原版。** 原项目由 [ccch1mneyyy](https://github.com/ccch1mneyyy) 维护，本仓库只做了一处功能改动，其余代码均来自上游。
+**第三方修改版本，非原版。** 原项目由 [ccch1mneyyy](https://github.com/ccch1mneyyy) 维护，本仓库在其基础上做了功能改动与安全加固，其余代码均来自上游。
 
 ## 这个 fork 改了什么
 
@@ -29,13 +29,14 @@
 | 档位 | 颜色 | 能做什么 |
 |---|---|---|
 | **原版** | 绿 | 和原版完全一样：只能看屏幕、点屏幕、打字、开 App，**不能执行任何终端命令**。默认档位。 |
-| **进阶** | 黄 | 执行**白名单里勾选过**的命令。读文件、看系统状态、复制文件没问题；写文件只允许 `Download` 和 `/data/local/tmp`；打不开系统分区，碰不到别的 敏感App 数据。 |
+| **进阶** | 黄 | 执行**白名单里勾选过**的命令。读文件、看系统状态、复制文件没问题；写文件只允许 `Download`、`/data/local/tmp` 与 App 私有目录；系统分区、敏感 App、系统应用的数据都不给碰。 |
 | **高危** | 红 | **任意命令、任意路径**，包括删文件、改系统设置。切换时弹一次确认，之后不再提醒。 |
 
 - **每档各记各的勾选**：在进阶模式里关掉的命令，不会因为切到高危再切回来就丢掉。
 - **包管理与脚本执行**在进阶模式下整组锁死，切到高危才能用。
-- **相册**（`DCIM`、`Pictures`）永远只能读和写新文件，**删不掉、覆盖不了**，除非切到高危。
+- **相册**（`DCIM`、`Pictures`、`Movies`）永远只能读、只能新建文件，**删不掉、改不了**，除非切到高危。
 - 没开「允许读写整个 /sdcard」时，碰 `/sdcard` 下别处会提示去哪打开。
+- 命令清单带**版本号**：升级后如果清单结构变了，会自动重置为该档位的当前默认，避免旧配置里留着你早就关不掉的东西。
 - 每次执行都进「最近记录」（最多 100 条），能看到真实命令。
 
 ### 3. 它控制的是哪一层
@@ -66,18 +67,16 @@
 
 `shell` 一直在工具列表里，开关只决定放不放行（上游要求工具集固定，否则 KV cache 全失效）。
 
-
 ### 5. 进阶模式的禁区
 
-进阶模式下有几处**默认拒绝**，不依赖命令清单怎么勾：
+进阶模式下有几处**默认拒绝**，不依赖命令清单怎么勾。
 
-**一律拒（读也不行）**
+#### 5.1 系统与敏感区：读也不行
 
 | 路径 | 是什么 |
 |---|---|
 | `/system/` `/vendor/` `/product/` `/apex/` `/odm/` | 系统分区 |
 | `/data/adb/` | root 管理器：模块、授权记录 |
-| `/data/data/` `/data/user/` | 所有 App 的私有数据（后者是前者的另一个名字） |
 | `/data/system/` | 系统设置、账户 |
 | `/data/misc/` | Wi-Fi、VPN、密钥 |
 | `/data/app/` | 已安装 App 的 APK |
@@ -86,23 +85,51 @@
 
 判断前会把路径先 `normalize`，所以 `/data/local/tmp/../deepseek` 这种用 `..` 往上绕的写法也会被折成真实路径再判断。
 
-**相册与视频：纯只读**
+#### 5.2 敏感 App 数据：92 条，默认拒
 
-`/sdcard/DCIM`、`/sdcard/Pictures`、`/sdcard/Movies`、`/sdcard/Android/media/.../Movies|Pictures|DCIM`
+**不是按名字逐个拦，是按分类清单拦**——支付、银行、证券保险、运营商、健康医疗、凭证隐私、政务证件、电商、社交身份，共 92 个包名。列几个：
+
+`com.tencent.mm`（微信）、`com.eg.android.AlipayGphone`（支付宝）、`com.icbc`（工商银行）、`com.chinatelecom.bestpayclient`（翼支付）、`com.ctid.open`（电子身份证）、`com.unionpay`（银联）……
+
+**例外**：`/data/local/tmp` 与 App 自己的私有目录不受此限。
+
+完整清单见 **[禁区清单](BLACKLIST.md)**（按分类列出全部 92 个包名）。
+
+#### 5.3 系统应用数据：按规则，不按名单
+
+判断依据是 `PackageManager` 的 `FLAG_SYSTEM` / `FLAG_UPDATED_SYSTEM_APP`——**只要它是系统应用，数据一律拒**。
+
+这么做是因为每个系统的「敏感系统应用」都不一样（短信库、电话、设置、厂商服务……），点名点不完，规则才拦得住。
+
+拿不到包管理器信息时按「系统应用」拒（fail-closed）。
+
+#### 5.4 相册与视频：纯只读
+
+`/sdcard/DCIM`、`/sdcard/Pictures`、`/sdcard/Movies`、`/storage/emulated/0/DCIM` 等。
 
 只允许这 13 个命令碰：`ls cat head tail grep find file stat du wc cut tr uniq`。
 
 `cp`、`mv`、`rm`、`sort -o`、`logcat -f` 一律拒——**只看、只读，不搬走、不改写、不删除**。
 
-**能写的只有这几处**
+`/sdcard/Android/obb/` 已移出禁区，交给「允许读写整个 /sdcard」开关控制。
+
+#### 5.5 能写的只有这几处
 
 | 位置 | 条件 |
 |---|---|
 | `/sdcard/Download/` | 一直可写 |
+| `/storage/emulated/0/Download/` | 一直可写 |
 | `/data/local/tmp/` | 一直可写 |
 | App 自己的私有目录 | 一直可写 |
+| **普通第三方 App 的私有数据** | 可读写（非敏感、非系统） |
 | `/sdcard/` 的其他部分 | 需要打开「允许读写整个 /sdcard」 |
-| 系统分区、别的 App、`/data/adb` | **高危模式才能碰** |
+| 系统分区、敏感 App、系统应用、`/data/adb` | **高危模式才能碰** |
+
+#### 5.6 命令级永久禁
+
+这几条在任何档位、任何勾选下都拒：
+
+`dd` `mkfs` `mke2fs` `mkntfs` `mkdosfs` `fdisk` `parted` `sgdisk` `gdisk` `fastboot` `setenforce` `insmod` `rmmod` `modprobe` `wipe` `chroot` `pivot_root` `reboot` `shutdown` `halt`
 
 ## 能做什么
 
@@ -119,7 +146,7 @@
 
 安装要求 Android 8.0（API 26）及以上，本仓库只提供 **arm64** 包；x86_64 设备请用[原版](https://github.com/ccch1mneyyy/dsh-go/releases)。
 
-1. 从 [GitHub Releases](https://github.com/ghjicb/dsh-Go/releases/latest) 下载 `app-arm64-release.apk`
+1. 从 [GitHub Releases](https://github.com/ghjicb/dsh-Go/releases/latest) 下载 `dsh-go-<版本>-arm64.apk`
 2. 本项目和原版包签名不一致，覆盖安装请自行绕过签名校验
 3. **装之前先备份**，本包的行为与原版不同，出问题不可逆
 
