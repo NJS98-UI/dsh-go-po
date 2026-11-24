@@ -196,7 +196,7 @@ jobs:
           head -6 /tmp/certs.txt
           # 配了私签 secret 时，指纹必须和我们 keystore 一致，否则拒绝发版
           if [ -n "$KEYSTORE_B64" ]; then
-            grep -qi 'b1c9f6a1527907a0bbeb95b010031bd62ea883635d9b608cf9a04ef6285f7aae' /tmp/certs.txt \
+            grep -qi '05334d53e4804969de055ef2271411daf5c3478e53384d31c10e3379e97a9cff' /tmp/certs.txt \
               || { echo "::error::APK 签名指纹不对（不是我们的私签），拒绝发版"; exit 1; }
             echo "signature fingerprint OK (our release keystore)"
           fi
