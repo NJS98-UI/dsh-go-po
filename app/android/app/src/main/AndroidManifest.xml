@@ -19,6 +19,9 @@
          scanner opens; the photo and paste paths work without it. Never required. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- OTG USB host (usb/UsbHostPlugin.kt): enumerate and speak to plugged-in devices.
+         Optional, so installs stay allowed on phones without a USB host controller. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <!-- TODO(targetSdk >= 30): package visibility hides recognition services from
          SpeechRecognizer.isRecognitionAvailable unless declared; add to <queries>:
          <intent><action android:name="android.speech.RecognitionService" /></intent> -->
@@ -312,6 +315,23 @@
         </receiver>
 
         <receiver android:name=".notify.NotifyActionReceiver" android:exported="false" />
+
+        <!-- OTG USB host: hot-plug and the per-device permission result (usb/UsbHostPlugin.kt,
+             usb/UsbHostReceiver.kt). The meta-data filter matches any device; access is still
+             asked per device at runtime. -->
+        <receiver
+            android:name=".usb.UsbHostReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+        </receiver>
         <receiver android:name=".phone.a11y.A11yKeeper$Receiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

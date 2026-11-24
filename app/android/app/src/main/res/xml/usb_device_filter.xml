@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OTG USB host: match any plugged-in device so hot-plug reaches UsbHostReceiver.
+     Access is still asked per device at runtime through the system permission dialog. -->
+<resources>
+    <usb-device />
+</resources>
