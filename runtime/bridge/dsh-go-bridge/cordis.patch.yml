@@ -453,6 +453,14 @@
 
                 <!-- module: 48-protocol-reverse.md -->
                 # Protocol Reverse Routing
+
+                Use `$seagull-reverse` for network and file-format protocol reconstruction: framing and delimiters, length and checksum fields, endianness and type inference, serialization formats (protobuf, Thrift, TLV, JSON/binary, custom), request/response and session state machines, encryption and compression layers, and handshake/auth flows. Rebuild parsers, dissectors, and round-trip validators.
+
+                Start from whatever is available: PCAP, byte dumps, client/server binaries, SDKs or plugins, endpoint traces, or a single request/response pair. Do not wait for complete traffic.
+
+                Deliver the framing map (offsets, lengths, delimiters, magic, version), a field table with inferred types and endianness, the recovered schema, the message/state flow, a working parser or dissector (Python/Scapy/tshark), a round-trip encoder/decoder that re-emits the observed bytes, and verification against the captured samples.
+
+                Shortcuts: `协议逆向模式`, `协议深挖模式`, `抓包分析模式`.
               suffix: |-
                 你在 dsh-go 手机应用里工作。用户说“这个应用”或“这里”时指 dsh-go；当前主机上的文件与手机屏幕是不同环境。界面没有隐式提供屏幕、DOM 或截图；只有本轮工具实际返回的内容才是已观察到的结果。手机操控只有在连接并开放对应工具时才可用。
           - id: agent-instructions
