@@ -148,12 +148,14 @@ export function apply(ctx) {
         return PATCH_YAML + (if (supported) "        dshGoPhoneCaller: true\n" else "") + DIAGNOSTICS_PRESET_YAML + PRESET_DEFAULT_YAML
     }
 
-    /** 默认 agent 预设固定 standard：不走 PTC/run_code（扳手），命令直接可见。patch 条目会替换整个 config，所以重述全部字段。 */
+    /** 默认 agent 预设固定海鸥（dsh-go-seagull）：标准工具集、命令直接可见，不走 PTC/run_code。
+     *  patch 条目会替换整个 config，所以重述全部字段；这里必须覆盖 /etc/dsh-app/dsh-web.patch.yml
+     *  里 agent-preset-registry 的 default，否则海鸥默认会被这个后加载的 overlay 盖回 standard。 */
     const val PRESET_DEFAULT_YAML = """    - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
-        default: standard
-        selectedDefault: standard
+        default: dsh-go-seagull
+        selectedDefault: dsh-go-seagull
 """
 
 
