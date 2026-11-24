@@ -23,6 +23,7 @@ import 'install_card.dart';
 import 'new_bot_page.dart';
 import 'new_room_sheet.dart';
 import 'room_chat_page.dart';
+import 'seagull_preset.dart';
 
 class BotsPage extends ConsumerWidget {
   const BotsPage({super.key});
@@ -111,6 +112,7 @@ class _Team extends ConsumerWidget {
               chevron: false,
               onTap: readOnly ? null : () => Navigator.of(context).push(NewBotPage.route()),
             ),
+            const SeagullPresetRow(),
           ],
         ),
         const SizedBox(height: 24),
