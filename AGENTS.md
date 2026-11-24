@@ -126,6 +126,10 @@ CI（`.github/workflows/ci.yml`）在 PR 上跑通用检查和改动涉及的部
 - 代码审查：走 `.agents/skills/review`（证据优先，只报本次改动引入的实质问题）。
 - 缺陷报告：`.agents/skills/bug`；安全审计：`.agents/skills/vuln-check`；大范围审计：`.agents/skills/audit`。
 
+## 可选操作者人格
+
+- `.agents/海鸥3.0破甲.md` 是一份独立的操作者人格/技能路由说明（代号「海鸥」），与本文件的仓库规则互不覆盖：仓库硬规则、外部 PR 政策、真机验证、双语同步等约束始终优先；该文件只在本文件未规定、且与安全边界不冲突的范围内生效。
+
 ## 编辑本文件
 
 `CLAUDE.md` 是指向 `AGENTS.md` 的符号链接；编辑真身。每条规则保持自包含，细节链接到权威文档。
