@@ -4,6 +4,7 @@ import io.github.ccch1mneyyy.dsh_app.phone.background.Reasons
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneTaskTrace
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillReplaySelections
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillOutcomes
+import io.github.ccch1mneyyy.dsh_app.usb.UsbAccess
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.time.ZoneId
@@ -29,6 +30,8 @@ interface PhoneEnv {
     fun androidShell(): PhoneShellExecutor? = null
     fun uiText(): PhoneUiText = PhoneUiText.DEFAULT
     fun zone(): ZoneId
+    /** OTG USB host for the phone tool; null on devices/tests without a USB host controller. */
+    fun usb(): UsbAccess? = null
     /** Tells the person what to fix (accessibility off, …); at most once per task and kind. */
     fun notifyFix(kind: String)
     /** New native task only, under its current-owner check; no rendering or IO. */
@@ -394,6 +397,7 @@ class PhoneCore(
                 PhoneToolCatalog.TAP, PhoneToolCatalog.TYPE, PhoneToolCatalog.SCROLL, PhoneToolCatalog.TAP_XY -> act(name, a, scope, owner)
                 PhoneToolCatalog.KEY -> key(a, owner)
                 PhoneToolCatalog.HANDOFF -> handoff(a, scope, owner)
+                PhoneToolCatalog.USB -> usb(a)
                 // l10n:keep agent tool result
                 else -> Out("没有这个手机工具：$name", error = true)
             }
@@ -421,6 +425,113 @@ class PhoneCore(
             !successfulExit || result["timedOut"] == true || result["cancelled"] == true
         return Out(Json.write(result), error = failed, summary = "Android Shell",
             decision = (result["errorCode"] as? String) ?: if (failed) "failed" else "ok")
+    }
+
+    // ── OTG USB ─────────────────────────────────────────────────────────────────────
+
+    private fun usb(a: Args): Out {
+        val access = env.usb() ?: return Out(
+            "这台设备没有 OTG USB 宿主能力，用不了 usb 工具。",
+            error = true, summary = PhoneToolCatalog.USB, decision = "unavailable")
+        val operation = a.str("operation")
+        val deviceId = a.int("deviceId")
+        return when (operation) {
+            null, "list" -> usbList(access)
+            "read" -> {
+                val id = deviceId ?: return Out(
+                    "read 需要 deviceId（先用 operation=list 看设备）。",
+                    error = true, summary = "USB 读取", decision = "badArguments")
+                val maxBytes = (a.int("maxBytes") ?: 4096).coerceIn(1, 65536)
+                usbRead(access, id, maxBytes)
+            }
+            "write" -> {
+                val id = deviceId ?: return Out(
+                    "write 需要 deviceId（先用 operation=list 看设备）。",
+                    error = true, summary = "USB 写入", decision = "badArguments")
+                val raw = a.str("data") ?: return Out(
+                    "write 需要 data（要写入的字节）。",
+                    error = true, summary = "USB 写入", decision = "badArguments")
+                val bytes = if (a.bool("hex") == true) {
+                    decodeHex(raw) ?: return Out(
+                        "hex 数据格式不对：要偶数个十六进制字符（如 41 54 0D 0A）。",
+                        error = true, summary = "USB 写入", decision = "badArguments")
+                } else raw.toByteArray(Charsets.UTF_8)
+                usbWrite(access, id, bytes)
+            }
+            // l10n:keep agent tool result
+            else -> Out("operation 只能是 list / read / write。", error = true, summary = PhoneToolCatalog.USB, decision = "badArguments")
+        }
+    }
+
+    private fun usbList(access: UsbAccess): Out {
+        val devices = access.list()
+        if (devices.isEmpty()) return Out(
+            "没有检测到通过 OTG 插入的 USB 设备。先确认设备已插入并供电，再重试 list。",
+            summary = "USB 设备列表")
+        val text = buildString {
+            append("共 ").append(devices.size).append(" 个 USB 设备：\n")
+            for (d in devices) {
+                val name = d["name"] as? String ?: "未知设备"
+                val vid = (d["vendorId"] as? Int)?.let { "%04x".format(it) } ?: "?"
+                val pid = (d["productId"] as? Int)?.let { "%04x".format(it) } ?: "?"
+                val permission = if (d["hasPermission"] == true) "已授权" else "未授权"
+                append("id=").append(d["id"]).append(" · ").append(name)
+                    .append(" · vid=").append(vid).append(" pid=").append(pid)
+                    .append(" · ").append(permission).append('\n')
+            }
+        }.trimEnd()
+        return Out(text, summary = "USB 设备列表")
+    }
+
+    private fun usbRead(access: UsbAccess, deviceId: Int, maxBytes: Int): Out {
+        val r = access.read(deviceId, maxBytes)
+        r["error"]?.let { return usbError(it as String, "USB 读取") }
+        val bytes = (r["data"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt()?.toByte() }?.toByteArray()
+            ?: ByteArray(0)
+        val read = (r["read"] as? Int) ?: 0
+        val text = buildString {
+            append("读到 ").append(read).append(" 字节。")
+            if (bytes.isNotEmpty()) {
+                append("\nhex: ").append(bytes.joinToString(" ") { "%02x".format(it.toInt() and 0xff) })
+                val ascii = bytes.all {
+                    val v = it.toInt() and 0xff
+                    v in 0x20..0x7e || v == 0x0a || v == 0x0d || v == 0x09
+                }
+                if (ascii) append("\n文本: ").append(String(bytes, Charsets.US_ASCII))
+            }
+        }
+        return Out(text, summary = "USB 读取")
+    }
+
+    private fun usbWrite(access: UsbAccess, deviceId: Int, bytes: ByteArray): Out {
+        val r = access.write(deviceId, bytes)
+        r["error"]?.let { return usbError(it as String, "USB 写入") }
+        val written = r["written"] as? Int ?: -1
+        return if (written < 0) Out("写入失败（传输错误）。", error = true, summary = "USB 写入", decision = "transferFailed")
+        else Out("写入 $written 字节。", summary = "USB 写入")
+    }
+
+    private fun usbError(code: String, summary: String): Out {
+        val (text, decision) = when (code) {
+            "notFound" -> "没找到这个设备（可能已拔出），先用 operation=list 重新看。" to "notFound"
+            "noPermission" -> "用户没有授权这台设备。请在弹出的系统授权框里点「允许」后再重试。" to "refused:noPermission"
+            "openFailed" -> "打不开这台设备（可能被占用或不支持），请重插后再试。" to "openFailed"
+            "noEndpoint" -> "这台设备没有可用的批量传输端点（读/写方向不对或设备不支持）。" to "noEndpoint"
+            "transferFailed" -> "传输失败（超时或设备无响应）。" to "transferFailed"
+            else -> "USB 操作失败：$code" to code
+        }
+        return Out(text, error = true, summary = summary, decision = decision)
+    }
+
+    private fun decodeHex(text: String): ByteArray? {
+        val hex = text.filter { !it.isWhitespace() }
+        if (hex.isEmpty() || hex.length % 2 != 0) return null
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val b = hex.substring(i * 2, i * 2 + 2).toIntOrNull(16) ?: return null
+            out[i] = b.toByte()
+        }
+        return out
     }
 
     // ── System actions ──────────────────────────────────────────────────────────────
@@ -982,7 +1093,7 @@ class PhoneCore(
 
     private fun requiredScreens(name: String, a: Args): Either<String, List<PhoneScreen>> {
         return when (name) {
-            PhoneToolCatalog.APPS, PhoneToolCatalog.NOTIFY, PhoneToolCatalog.CLIPBOARD -> Either.Right(emptyList())
+            PhoneToolCatalog.APPS, PhoneToolCatalog.NOTIFY, PhoneToolCatalog.CLIPBOARD, PhoneToolCatalog.USB -> Either.Right(emptyList())
             PhoneToolCatalog.OPEN -> Either.Right(if (a.bool("background") == true)
                 listOf(PhoneScreen.MAIN, PhoneScreen.BACKGROUND) else listOf(PhoneScreen.MAIN))
             PhoneToolCatalog.SCREEN -> Either.Right(listOf(if (a.bool("background") == true) PhoneScreen.BACKGROUND else PhoneScreen.MAIN))
@@ -1550,6 +1661,7 @@ class PhoneCore(
             PhoneToolCatalog.SCREEN -> 12_000L
             PhoneToolCatalog.COLLECT -> 120_000L
             PhoneToolCatalog.HANDOFF -> 30_000L
+            PhoneToolCatalog.USB -> 60_000L
             else -> 30_000L
         }
     }

@@ -38,6 +38,8 @@ import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneTaskTrace
 import io.github.ccch1mneyyy.dsh_app.runtime.RuntimeController
 import io.github.ccch1mneyyy.dsh_app.runtime.DshService
 import io.github.ccch1mneyyy.dsh_app.shortcuts.EntryActivity
+import io.github.ccch1mneyyy.dsh_app.usb.UsbAccess
+import io.github.ccch1mneyyy.dsh_app.usb.UsbHostAccess
 import java.io.File
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArraySet
@@ -327,6 +329,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     val shell = io.github.ccch1mneyyy.dsh_app.phone.shell.AndroidShellController(app) {
         ticker.execute { emitStatus() }
     }
+    private val usbAccess by lazy { UsbHostAccess(app) }
     val preview = BackgroundPreview(app, background::previewTarget, { taskId ->
         val task = sessions.task(taskId)?.tasks?.snapshot()
         task?.active == true && task.id == taskId && !isLocked()
@@ -1014,6 +1017,8 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     }
 
     override fun system(): SystemApi = system
+
+    override fun usb(): UsbAccess = usbAccess
 
     override fun androidShell(): PhoneShellExecutor = PhoneShellExecutor { ownerId, command, timeoutMs, live, confirm ->
         shell.execute(ownerId, command, timeoutMs, live, confirm)

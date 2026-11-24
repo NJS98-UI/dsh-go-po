@@ -24,6 +24,7 @@ object PhoneToolCatalog {
     const val HANDOFF = "handoff"
     const val ANDROID_SHELL = "android_shell"
     const val SHELL = "shell"
+    const val USB = "usb"
     const val DIAGNOSTICS = DiagnosticsTool.NAME
 
     class Tool(val name: String, val description: String, val properties: Map<String, Any?>, val required: List<String>) {
@@ -290,6 +291,20 @@ object PhoneToolCatalog {
                 "timeoutMs" to int("超时毫秒，1000–120000，默认 20000"),
             ),
             listOf("command"),
+        ),
+        Tool(
+            USB,
+            // l10n:keep agent tool catalog
+            "读写通过 OTG 插入这台手机的 USB 设备。operation=list 枚举设备（含 id、名称、vid/pid 和是否已授权）；read/write 走设备的批量端点（串口适配器、U 盘、简单 HID）。首次读写某设备会弹系统授权框，用户点「允许」后本次调用才返回；超时或拒绝会报错，不要自动重试。read 返回字节数与十六进制（可读时附 ASCII 文本）；write 默认按 UTF-8 写入，hex:true 时 data 按十六进制解析。",
+            // l10n:keep agent tool catalog
+            linkedMapOf(
+                "operation" to enum(listOf("list", "read", "write"), "操作类型，默认 list"),
+                "deviceId" to int("设备编号，read/write 必填，取自 list 返回的 id"),
+                "data" to str("write 要写入的内容：默认 UTF-8 文本；hex:true 时是十六进制字节串（如 41 54 0D 0A）"),
+                "hex" to bool("write 的 data 是否按十六进制解析"),
+                "maxBytes" to int("read 最多读多少字节，1–65536，默认 4096"),
+            ),
+            emptyList(),
         ),
     )
 

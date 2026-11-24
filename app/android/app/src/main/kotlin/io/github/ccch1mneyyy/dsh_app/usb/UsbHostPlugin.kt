@@ -36,18 +36,20 @@ class UsbHostPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var usbManager: UsbManager
     private val links = ConcurrentHashMap<Int, UsbLink>()
     private val pending = ConcurrentHashMap<Int, MethodChannel.Result>()
+    private val permissionListener: (UsbDevice, Boolean) -> Unit = { device, granted -> resolvePermission(device, granted) }
+    private val detachListener: (UsbDevice) -> Unit = { device -> drop(device.deviceId) }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         channel = MethodChannel(binding.binaryMessenger, CHANNEL).also { it.setMethodCallHandler(this) }
-        UsbHostBus.permissionListener = { device, granted -> resolvePermission(device, granted) }
-        UsbHostBus.detachListener = { device -> drop(device.deviceId) }
+        UsbHostBus.addPermissionListener(permissionListener)
+        UsbHostBus.addDetachListener(detachListener)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        UsbHostBus.permissionListener = null
-        UsbHostBus.detachListener = null
+        UsbHostBus.removePermissionListener(permissionListener)
+        UsbHostBus.removeDetachListener(detachListener)
         channel?.setMethodCallHandler(null)
         channel = null
         links.values.forEach { runCatching { it.connection.close() } }
