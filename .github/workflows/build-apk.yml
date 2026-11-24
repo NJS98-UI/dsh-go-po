@@ -248,6 +248,9 @@ jobs:
 
       - name: Publish GitHub release
         if: github.event.inputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        # 个人 fork 没有上游发布仓库 (ghjicb/dsh-Go) 的写权限，发布 403 不应把
+        # 整个构建标记为失败：APK 产物在此之前已上传，可直接从 Artifacts 下载。
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
