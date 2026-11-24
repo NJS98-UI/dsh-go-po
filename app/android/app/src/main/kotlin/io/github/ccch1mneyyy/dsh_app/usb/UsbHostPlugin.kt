@@ -80,8 +80,11 @@ class UsbHostPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         )
     }
 
+    private fun findDevice(deviceId: Int): UsbDevice? =
+        usbManager.deviceList.values.firstOrNull { it.deviceId == deviceId }
+
     private fun requestPermission(deviceId: Int?, result: MethodChannel.Result) {
-        val device = deviceId?.let { usbManager.deviceList[it] }
+        val device = deviceId?.let { findDevice(it) }
         if (device == null) {
             result.success(mapOf("granted" to false, "error" to "notFound"))
             return
@@ -109,7 +112,7 @@ class UsbHostPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private fun open(deviceId: Int?): Map<String, Any?> {
         if (deviceId == null) return failure("badArguments")
         links[deviceId]?.let { return mapOf("opened" to true) }
-        val device = usbManager.deviceList[deviceId] ?: return failure("notFound")
+        val device = findDevice(deviceId) ?: return failure("notFound")
         if (!usbManager.hasPermission(device)) return failure("noPermission")
         val connection = usbManager.openDevice(device) ?: return failure("openFailed")
         var inEndpoint: UsbEndpoint? = null
